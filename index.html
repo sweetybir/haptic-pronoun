@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0"
+    />
+    <title>Haptic Pronoun — 双触</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #f2efe9;
+        touch-action: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        font-family: "Times New Roman", "Songti SC", "SimSun", serif;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        position: fixed;
+        top: 0;
+        left: 0;
+      }
+      .paper-grain {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 2;
+        mix-blend-mode: multiply;
+        opacity: 0.06;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        background-size: 256px 256px;
+      }
+      .ui-layer {
+        position: fixed;
+        z-index: 3;
+        pointer-events: none;
+        color: #1a1a1a;
+        opacity: 0.32;
+      }
+      .title {
+        top: 24px;
+        left: 24px;
+        font-size: 11px;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+      }
+      .state-label {
+        top: 24px;
+        right: 24px;
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ─── Pairing Overlay ─── */
+      .pair-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        background: #f2efe9;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition:
+          opacity 1.2s ease,
+          visibility 1.2s ease;
+        padding: 24px;
+      }
+      .pair-overlay.hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .pair-title {
+        font-size: 13px;
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+        color: #1a1a1a;
+        opacity: 0.5;
+        margin-bottom: 48px;
+      }
+      .pair-mode {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        max-width: 320px;
+        width: 100%;
+      }
+      .pair-button {
+        background: none;
+        border: 1px solid rgba(26, 26, 26, 0.25);
+        color: #1a1a1a;
+        padding: 14px 28px;
+        font-family: inherit;
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.4s ease;
+        width: 100%;
+        pointer-events: auto;
+      }
+      .pair-button:hover,
+      .pair-button:active {
+        background: rgba(26, 26, 26, 0.05);
+        border-color: rgba(26, 26, 26, 0.5);
+      }
+      .room-code {
+        font-size: 42px;
+        letter-spacing: 0.3em;
+        color: #1a1a1a;
+        opacity: 0.85;
+        font-variant-numeric: tabular-nums;
+        padding: 16px 0;
+      }
+      .pair-hint {
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        color: #1a1a1a;
+        opacity: 0.4;
+        text-align: center;
+        line-height: 1.8;
+        text-transform: uppercase;
+      }
+      .code-input {
+        background: none;
+        border: none;
+        border-bottom: 1px solid rgba(26, 26, 26, 0.3);
+        color: #1a1a1a;
+        font-family: inherit;
+        font-size: 32px;
+        letter-spacing: 0.25em;
+        text-align: center;
+        width: 100%;
+        padding: 12px 0;
+        outline: none;
+        text-transform: uppercase;
+        pointer-events: auto;
+      }
+      .code-input:focus {
+        border-bottom-color: rgba(26, 26, 26, 0.7);
+      }
+      .divider {
+        font-size: 9px;
+        letter-spacing: 0.3em;
+        color: #1a1a1a;
+        opacity: 0.3;
+        margin: 8px 0;
+        text-transform: uppercase;
+      }
+      .status-line {
+        position: fixed;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 9px;
+        letter-spacing: 0.2em;
+        color: #1a1a1a;
+        opacity: 0.4;
+        text-transform: uppercase;
+        text-align: center;
+      }
+      .conn-dot {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #1a1a1a;
+        opacity: 0.2;
+        z-index: 3;
+        transition:
+          opacity 0.6s ease,
+          background 0.6s ease;
+      }
+      .conn-dot.connected {
+        opacity: 0.6;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div class="paper-grain"></div>
+
+    <div class="ui-layer title">触觉代词 · DUET</div>
+    <div class="ui-layer state-label" id="stateLabel">独 · ALONE</div>
+    <div class="conn-dot" id="connDot"></div>
+
+    <div class="pair-overlay" id="pairOverlay">
+      <div class="pair-title">触 觉 代 词</div>
+
+      <div class="pair-mode" id="modeSelect">
+        <button class="pair-button" id="btnHost">创建房间 · HOST</button>
+        <div class="divider">— 或 —</div>
+        <button class="pair-button" id="btnJoin">加入房间 · JOIN</button>
+      </div>
+
+      <div class="pair-mode" id="hostView" style="display: none">
+        <div class="pair-hint">告 诉 朋 友 这 个 代 号</div>
+        <div class="room-code" id="roomCode">····</div>
+        <div class="pair-hint" id="hostStatus">等 待 接 入</div>
+      </div>
+
+      <div class="pair-mode" id="joinView" style="display: none">
+        <div class="pair-hint">输 入 朋 友 的 代 号</div>
+        <input
+          class="code-input"
+          id="codeInput"
+          maxlength="4"
+          inputmode="text"
+          autocapitalize="characters"
+          placeholder="····"
+        />
+        <button class="pair-button" id="btnConnect">接 入 · CONNECT</button>
+        <div class="pair-hint" id="joinStatus" style="opacity: 0">连 接 中</div>
+      </div>
+    </div>
+
+    <script>
+      // ═══════════════════════════════════════════════════════════
+      //  WebGL Setup
+      // ═══════════════════════════════════════════════════════════
+      const canvas = document.getElementById("c");
+      const gl = canvas.getContext("webgl", {
+        alpha: false,
+        antialias: false,
+        premultipliedAlpha: false,
+        preserveDrawingBuffer: false,
+      });
+      gl.getExtension("OES_standard_derivatives");
+
+      const vertSrc = `
+attribute vec2 aPos;
+varying vec2 vUv;
+void main() {
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+      // Each touch slot: vec4(x, y, radius, kind)  kind: 0=local, 1=remote
+      const fragSrc = `
+#extension GL_OES_standard_derivatives : enable
+precision highp float;
+
+varying vec2 vUv;
+uniform vec2 uResolution;
+uniform float uTime;
+uniform int uCount;
+uniform vec4 uTouches[10]; // xy=pos, z=radius, w=kind (0 local, 1 remote)
+uniform float uWarmth;
+
+const vec3 PAPER = vec3(0.949, 0.937, 0.914);
+const vec3 INK   = vec3(0.055, 0.047, 0.043);
+
+// remote-only base tint: ever-so-slightly cooler ink
+const vec3 INK_REMOTE = vec3(0.060, 0.058, 0.068);
+
+// warm gradient
+const vec3 W0 = vec3(0.26, 0.11, 0.07);
+const vec3 W1 = vec3(0.72, 0.34, 0.14);
+const vec3 W2 = vec3(0.94, 0.74, 0.36);
+
+// cool gradient
+const vec3 C0 = vec3(0.08, 0.10, 0.20);
+const vec3 C1 = vec3(0.22, 0.36, 0.54);
+const vec3 C2 = vec3(0.58, 0.72, 0.82);
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+             mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p) {
+  float v=0.0, a=0.5;
+  for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.0+100.0;a*=0.5;}
+  return v;
+}
+
+vec3 mapInk(float depth, float w, float remoteRatio) {
+  float absW = abs(w);
+
+  vec3 warmG = mix(W0, W1, smoothstep(0.0, 0.45, depth));
+  warmG = mix(warmG, W2, smoothstep(0.35, 1.0, depth));
+
+  vec3 coolG = mix(C0, C1, smoothstep(0.0, 0.45, depth));
+  coolG = mix(coolG, C2, smoothstep(0.35, 1.0, depth));
+
+  vec3 baseInk = mix(INK, INK_REMOTE, remoteRatio);
+  vec3 colored = w >= 0.0 ? warmG : coolG;
+  return mix(baseInk, colored, absW);
+}
+
+void main() {
+  vec2 uv = vUv;
+  vec2 asp = vec2(uResolution.x/uResolution.y, 1.0);
+  vec2 pos = uv * asp;
+
+  // accumulate two fields: full strength (local) + attenuated (remote)
+  float fieldLocal = 0.0;
+  float fieldRemote = 0.0;
+
+  for(int i=0;i<10;i++){
+    if(i>=uCount) break;
+    vec2 tp = uTouches[i].xy * asp;
+    float r = uTouches[i].z;
+    float kind = uTouches[i].w;
+    float d = distance(pos, tp);
+
+    // remote touches: slightly larger sigma (more diffuse) and lower weight
+    float sigMul = mix(1.8, 2.2, kind);
+    float sig = r * sigMul;
+    float g = exp(-d*d/(2.0*sig*sig));
+
+    if (kind < 0.5) fieldLocal += g;
+    else fieldRemote += g * 0.78; // remote feels lighter
+  }
+
+  float field = fieldLocal + fieldRemote;
+  float remoteRatio = field > 0.001 ? clamp(fieldRemote / field, 0.0, 1.0) : 0.0;
+
+  float t = uTime * 0.15;
+  float n = fbm(pos*3.0 + vec2(t*0.3, t*0.2)) * 0.12;
+  // remote portion gets extra distortion → "穿过纤维" 的延迟感
+  float extraDistort = remoteRatio * fbm(pos*5.0 + uTime*0.08) * 0.06;
+  float df = field + n * field * 2.0 + extraDistort;
+
+  float shadow = smoothstep(0.0, 0.05, df) * (1.0 - exp(-df*3.0));
+  float core   = 1.0 - exp(-df*6.0);
+  float halo   = smoothstep(0.0, 0.02, df) * 0.15;
+
+  shadow *= sin(uTime*1.5)*0.03 + 1.0;
+
+  float ink = clamp(shadow*0.55 + core*0.35 + halo, 0.0, 1.0);
+  ink = mix(ink*0.6, ink, smoothstep(0.0, 0.15, df));
+
+  // remote touches get a subtle additional edge softening
+  ink *= mix(1.0, 0.88, remoteRatio);
+
+  // merge pulse on cross-device contact
+  float mp = smoothstep(0.9, 1.1, df);
+  ink = clamp(ink + sin(uTime*4.0)*0.04*mp, 0.0, 1.0);
+
+  float depth = clamp(df / 1.5, 0.0, 1.0);
+  vec3 ic = mapInk(depth, uWarmth, remoteRatio);
+
+  float grain = fbm(uv*80.0 + uTime*0.01) * 0.03;
+  vec3 col = mix(PAPER + grain, ic, ink);
+
+  float vig = 1.0 - dot((uv-0.5)*1.1, (uv-0.5)*1.1);
+  col *= 0.92 + 0.08*vig;
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+      function makeShader(type, src) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+          console.error(gl.getShaderInfoLog(s));
+        return s;
+      }
+      const prog = gl.createProgram();
+      gl.attachShader(prog, makeShader(gl.VERTEX_SHADER, vertSrc));
+      gl.attachShader(prog, makeShader(gl.FRAGMENT_SHADER, fragSrc));
+      gl.linkProgram(prog);
+      gl.useProgram(prog);
+
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+        gl.STATIC_DRAW,
+      );
+      const aP = gl.getAttribLocation(prog, "aPos");
+      gl.enableVertexAttribArray(aP);
+      gl.vertexAttribPointer(aP, 2, gl.FLOAT, false, 0, 0);
+
+      const loc = (n) => gl.getUniformLocation(prog, n);
+      const uRes = loc("uResolution"),
+        uTm = loc("uTime"),
+        uCnt = loc("uCount"),
+        uW = loc("uWarmth");
+      const uT = [];
+      for (let i = 0; i < 10; i++) uT.push(loc(`uTouches[${i}]`));
+
+      // ═══════════════════════════════════════════════════════════
+      //  Touch & Connection State
+      // ═══════════════════════════════════════════════════════════
+      const localActive = new Map(); // id → {x,y,radius}
+      const localFading = [];
+      const remoteActive = new Map(); // id → {x,y,radius,targetX,targetY,targetR}
+      const remoteFading = [];
+
+      const stateEl = document.getElementById("stateLabel");
+      const connDot = document.getElementById("connDot");
+
+      let warmth = 0,
+        target = 0,
+        merged = false,
+        wasMerged = false,
+        mergeT = 0;
+
+      // ═══════════════════════════════════════════════════════════
+      //  PeerJS Connection Layer
+      // ═══════════════════════════════════════════════════════════
+      let peer = null;
+      let conn = null;
+      let isHost = false;
+      let isConnected = false;
+
+      const overlay = document.getElementById("pairOverlay");
+      const modeSelect = document.getElementById("modeSelect");
+      const hostView = document.getElementById("hostView");
+      const joinView = document.getElementById("joinView");
+      const roomCodeEl = document.getElementById("roomCode");
+      const hostStatusEl = document.getElementById("hostStatus");
+      const joinStatusEl = document.getElementById("joinStatus");
+      const codeInput = document.getElementById("codeInput");
+
+      const ROOM_PREFIX = "haptic-pronoun-";
+
+      function genCode() {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        let s = "";
+        for (let i = 0; i < 4; i++)
+          s += chars[Math.floor(Math.random() * chars.length)];
+        return s;
+      }
+
+      document.getElementById("btnHost").addEventListener("click", () => {
+        modeSelect.style.display = "none";
+        hostView.style.display = "flex";
+        startHost();
+      });
+
+      document.getElementById("btnJoin").addEventListener("click", () => {
+        modeSelect.style.display = "none";
+        joinView.style.display = "flex";
+        setTimeout(() => codeInput.focus(), 100);
+      });
+
+      document.getElementById("btnConnect").addEventListener("click", () => {
+        const code = codeInput.value.trim().toUpperCase();
+        if (code.length !== 4) return;
+        startJoin(code);
+      });
+
+      codeInput.addEventListener("input", (e) => {
+        e.target.value = e.target.value.toUpperCase();
+      });
+
+      function startHost() {
+        isHost = true;
+        const code = genCode();
+        roomCodeEl.textContent = code;
+        peer = new Peer(ROOM_PREFIX + code, { debug: 1 });
+
+        peer.on("open", () => {
+          hostStatusEl.textContent = "等 待 接 入";
+        });
+
+        peer.on("connection", (c) => {
+          conn = c;
+          setupConn();
+          hostStatusEl.textContent = "已 接 入";
+          setTimeout(closeOverlay, 800);
+        });
+
+        peer.on("error", (err) => {
+          console.error("peer err", err);
+          hostStatusEl.textContent = "连 接 失 败 · 重 试";
+        });
+      }
+
+      function startJoin(code) {
+        isHost = false;
+        joinStatusEl.style.opacity = "0.6";
+        joinStatusEl.textContent = "连 接 中";
+        peer = new Peer(null, { debug: 1 });
+
+        peer.on("open", () => {
+          conn = peer.connect(ROOM_PREFIX + code, { reliable: false });
+          setupConn();
+        });
+
+        peer.on("error", (err) => {
+          console.error("peer err", err);
+          joinStatusEl.textContent = "代 号 无 效 · 重 试";
+        });
+      }
+
+      function setupConn() {
+        conn.on("open", () => {
+          isConnected = true;
+          connDot.classList.add("connected");
+          if (!isHost) {
+            joinStatusEl.textContent = "已 连 接";
+            setTimeout(closeOverlay, 800);
+          }
+        });
+
+        conn.on("data", (msg) => handleRemoteMsg(msg));
+
+        conn.on("close", () => {
+          isConnected = false;
+          connDot.classList.remove("connected");
+          remoteActive.clear();
+        });
+
+        conn.on("error", (err) => console.error("conn err", err));
+      }
+
+      function closeOverlay() {
+        overlay.classList.add("hidden");
+      }
+
+      function sendMsg(msg) {
+        if (conn && isConnected) {
+          try {
+            conn.send(msg);
+          } catch (e) {}
+        }
+      }
+
+      function handleRemoteMsg(msg) {
+        if (!msg || !msg.type) return;
+
+        if (msg.type === "down" || msg.type === "move") {
+          // store target position; render loop will smooth toward it
+          const existing = remoteActive.get(msg.id);
+          if (existing) {
+            existing.targetX = msg.x;
+            existing.targetY = msg.y;
+            existing.targetR = msg.r;
+          } else {
+            remoteActive.set(msg.id, {
+              x: msg.x,
+              y: msg.y,
+              radius: msg.r,
+              targetX: msg.x,
+              targetY: msg.y,
+              targetR: msg.r,
+              fadeAlpha: 1.0,
+            });
+          }
+        } else if (msg.type === "up") {
+          const ex = remoteActive.get(msg.id);
+          if (ex) {
+            remoteFading.push({ ...ex, fadeAlpha: 1.0 });
+            remoteActive.delete(msg.id);
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      //  Local Touch Handling
+      // ═══════════════════════════════════════════════════════════
+      function norm(t, r) {
+        const x = (t.clientX - r.left) / r.width;
+        const y = 1 - (t.clientY - r.top) / r.height;
+        const rx = (t.radiusX || 8) / r.width;
+        const ry = (t.radiusY || 8) / r.height;
+        return {
+          x,
+          y,
+          radius: Math.max(Math.sqrt(rx * ry), 0.015),
+          fadeAlpha: 1,
+        };
+      }
+
+      canvas.addEventListener(
+        "touchstart",
+        (e) => {
+          e.preventDefault();
+          const r = canvas.getBoundingClientRect();
+          for (const t of e.changedTouches) {
+            const n = norm(t, r);
+            localActive.set(t.identifier, n);
+            sendMsg({
+              type: "down",
+              id: t.identifier,
+              x: n.x,
+              y: n.y,
+              r: n.radius,
+            });
+          }
+          refreshState();
+        },
+        { passive: false },
+      );
+
+      canvas.addEventListener(
+        "touchmove",
+        (e) => {
+          e.preventDefault();
+          const r = canvas.getBoundingClientRect();
+          for (const t of e.changedTouches) {
+            if (localActive.has(t.identifier)) {
+              const n = norm(t, r);
+              localActive.set(t.identifier, n);
+              sendMsg({
+                type: "move",
+                id: t.identifier,
+                x: n.x,
+                y: n.y,
+                r: n.radius,
+              });
+            }
+          }
+          refreshState();
+        },
+        { passive: false },
+      );
+
+      canvas.addEventListener(
+        "touchend",
+        (e) => {
+          e.preventDefault();
+          for (const t of e.changedTouches) {
+            const ex = localActive.get(t.identifier);
+            if (ex) {
+              localFading.push({ ...ex });
+              localActive.delete(t.identifier);
+              sendMsg({ type: "up", id: t.identifier });
+            }
+          }
+          refreshState();
+        },
+        { passive: false },
+      );
+
+      canvas.addEventListener("touchcancel", (e) => {
+        for (const t of e.changedTouches) {
+          const ex = localActive.get(t.identifier);
+          if (ex) {
+            localFading.push({ ...ex });
+            localActive.delete(t.identifier);
+            sendMsg({ type: "up", id: t.identifier });
+          }
+        }
+        refreshState();
+      });
+
+      // mouse fallback
+      let mDown = false;
+      canvas.addEventListener("mousedown", (e) => {
+        mDown = true;
+        const r = canvas.getBoundingClientRect();
+        const n = {
+          x: (e.clientX - r.left) / r.width,
+          y: 1 - (e.clientY - r.top) / r.height,
+          radius: 0.04,
+          fadeAlpha: 1,
+        };
+        localActive.set("m", n);
+        sendMsg({ type: "down", id: "m", x: n.x, y: n.y, r: n.radius });
+        refreshState();
+      });
+      canvas.addEventListener("mousemove", (e) => {
+        if (!mDown) return;
+        const r = canvas.getBoundingClientRect();
+        const n = {
+          x: (e.clientX - r.left) / r.width,
+          y: 1 - (e.clientY - r.top) / r.height,
+          radius: 0.04,
+          fadeAlpha: 1,
+        };
+        localActive.set("m", n);
+        sendMsg({ type: "move", id: "m", x: n.x, y: n.y, r: n.radius });
+        refreshState();
+      });
+      canvas.addEventListener("mouseup", () => {
+        if (mDown) {
+          mDown = false;
+          const ex = localActive.get("m");
+          if (ex) {
+            localFading.push({ ...ex });
+            localActive.delete("m");
+            sendMsg({ type: "up", id: "m" });
+          }
+          refreshState();
+        }
+      });
+
+      // ═══════════════════════════════════════════════════════════
+      //  Cross-device Merge Detection
+      // ═══════════════════════════════════════════════════════════
+      // Merge happens when a local touch and a remote touch land at
+      // the same relative position on each screen.
+      function checkCrossMerge() {
+        const locals = [...localActive.values()];
+        const remotes = [...remoteActive.values()];
+
+        if (locals.length === 0 || remotes.length === 0) {
+          // also check local-only multi-touch merge
+          if (locals.length >= 2) {
+            for (let i = 0; i < locals.length; i++)
+              for (let j = i + 1; j < locals.length; j++) {
+                const dx = locals[i].x - locals[j].x,
+                  dy = locals[i].y - locals[j].y;
+                if (
+                  Math.sqrt(dx * dx + dy * dy) <
+                  (locals[i].radius + locals[j].radius) * 3.5
+                )
+                  return true;
+              }
+          }
+          return false;
+        }
+
+        for (const l of locals) {
+          for (const r of remotes) {
+            const dx = l.x - r.x,
+              dy = l.y - r.y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            // generous threshold for cross-device — finding each other is the ritual
+            if (d < 0.22) return true;
+          }
+        }
+        return false;
+      }
+
+      function refreshState() {
+        const ln = localActive.size;
+        const rn = remoteActive.size;
+        merged = checkCrossMerge();
+
+        if (ln === 0 && rn === 0) {
+          stateEl.textContent = isConnected ? "共 · TOGETHER" : "独 · ALONE";
+        } else if (merged) {
+          stateEl.textContent = "相 遇 · MEET";
+        } else if (rn > 0 && ln > 0) {
+          stateEl.textContent = "同 在 · WITH";
+        } else if (rn > 0) {
+          stateEl.textContent = "彼 · OTHER";
+        } else if (ln === 1) {
+          const t = [...localActive.values()][0];
+          stateEl.textContent = t.radius > 0.06 ? "面 · PALM" : "点 · TAP";
+        } else {
+          stateEl.textContent = `多 · ×${ln}`;
+        }
+      }
+
+      function stepWarmth(dt) {
+        if (merged) {
+          mergeT += dt;
+          wasMerged = true;
+          if (mergeT > 1.0) target = Math.min(1, target + 0.22 * dt);
+        } else if (
+          wasMerged &&
+          (localActive.size > 0 || remoteActive.size > 0)
+        ) {
+          target = Math.max(-1, target - 0.35 * dt);
+          mergeT = Math.max(0, mergeT - dt * 0.6);
+        } else if (localActive.size === 0 && remoteActive.size === 0) {
+          target += (0 - target) * 0.12 * dt;
+          mergeT = Math.max(0, mergeT - dt * 0.4);
+          if (mergeT <= 0.01) wasMerged = false;
+        } else {
+          mergeT = Math.max(0, mergeT - dt * 0.8);
+        }
+        warmth += (target - warmth) * Math.min(1, dt * 2.2);
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      //  Render Loop
+      // ═══════════════════════════════════════════════════════════
+      function resize() {
+        const d = Math.min(devicePixelRatio || 1, 2);
+        canvas.width = innerWidth * d;
+        canvas.height = innerHeight * d;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+      addEventListener("resize", resize);
+      resize();
+
+      let prev = performance.now();
+
+      function loop(now) {
+        const dt = Math.min((now - prev) / 1000, 0.1);
+        prev = now;
+
+        // smooth remote touches toward their target (compensates jitter)
+        for (const r of remoteActive.values()) {
+          r.x += (r.targetX - r.x) * Math.min(1, dt * 12);
+          r.y += (r.targetY - r.y) * Math.min(1, dt * 12);
+          r.radius += (r.targetR - r.radius) * Math.min(1, dt * 8);
+        }
+
+        refreshState();
+        stepWarmth(dt);
+
+        gl.uniform2f(uRes, canvas.width, canvas.height);
+        gl.uniform1f(uTm, now / 1000);
+        gl.uniform1f(uW, warmth);
+
+        // fade
+        for (let i = localFading.length - 1; i >= 0; i--) {
+          localFading[i].fadeAlpha -= 0.025;
+          localFading[i].radius *= 1.008;
+          if (localFading[i].fadeAlpha <= 0) localFading.splice(i, 1);
+        }
+        for (let i = remoteFading.length - 1; i >= 0; i--) {
+          remoteFading[i].fadeAlpha -= 0.025;
+          remoteFading[i].radius *= 1.008;
+          if (remoteFading[i].fadeAlpha <= 0) remoteFading.splice(i, 1);
+        }
+
+        // pack into uniforms with kind flag
+        const packed = [];
+        for (const t of localActive.values()) packed.push({ ...t, kind: 0 });
+        for (const t of localFading) packed.push({ ...t, kind: 0 });
+        for (const t of remoteActive.values()) packed.push({ ...t, kind: 1 });
+        for (const t of remoteFading) packed.push({ ...t, kind: 1 });
+
+        const cnt = Math.min(packed.length, 10);
+        gl.uniform1i(uCnt, cnt);
+        for (let i = 0; i < 10; i++) {
+          if (i < cnt) {
+            const p = packed[i];
+            gl.uniform4f(
+              uT[i],
+              p.x,
+              p.y,
+              Math.max(p.radius * p.fadeAlpha, 0.001),
+              p.kind,
+            );
+          } else {
+            gl.uniform4f(uT[i], -10, -10, 0.001, 0);
+          }
+        }
+
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>
