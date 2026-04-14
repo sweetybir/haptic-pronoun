@@ -302,8 +302,13 @@ void main() {
   gl_Position = vec4(aPos, 0.0, 1.0);
 }`;
 
-      const MAX_SLOTS = 24;
+      // Increased slot count to accommodate ink + bubbles in same draw
+      const MAX_SLOTS = 32;
+      const MAX_BUBBLES = 16;
 
+      // ─── Ink shader ───
+      // Softened real-edge transition, smaller base radii, plus a separate
+      // bubble pass on top via a second uniform array.
       const fragSrc = `
 #extension GL_OES_standard_derivatives : enable
 precision highp float;
@@ -315,6 +320,14 @@ uniform int uCount;
 uniform vec4 uTouchesA[${MAX_SLOTS}];
 uniform vec4 uTouchesB[${MAX_SLOTS}];
 uniform float uWarmth;
+
+uniform int uBubbleCount;
+// bubble: xy = pos, z = radius, w = life [0..1] (1=newborn, 0=popped)
+uniform vec4 uBubblesA[${MAX_BUBBLES}];
+// bubble color pair: rgb = colorA, alpha unused for now
+uniform vec4 uBubblesB[${MAX_BUBBLES}];
+// second color (for radial gradient)
+uniform vec4 uBubblesC[${MAX_BUBBLES}];
 
 const vec3 PAPER = vec3(0.949, 0.937, 0.914);
 const vec3 INK   = vec3(0.055, 0.047, 0.043);
@@ -350,19 +363,14 @@ float fbm(vec2 p) {
 vec3 mapInk(float depth, float w, float remoteRatio) {
   vec3 warmG = mix(W0, W1, smoothstep(0.0, 0.45, depth));
   warmG = mix(warmG, W2, smoothstep(0.35, 1.0, depth));
-
   vec3 coolG = mix(C0, C1, smoothstep(0.0, 0.45, depth));
   coolG = mix(coolG, C2, smoothstep(0.35, 1.0, depth));
-
   vec3 midG = mix(MID_EDGE, MID_MID, smoothstep(0.0, 0.45, depth));
   midG = mix(midG, MID_CORE, smoothstep(0.35, 1.0, depth));
 
   vec3 colored;
-  if (w >= 0.0) {
-    colored = mix(midG, warmG, w);
-  } else {
-    colored = mix(midG, coolG, -w);
-  }
+  if (w >= 0.0) colored = mix(midG, warmG, w);
+  else          colored = mix(midG, coolG, -w);
 
   float absW = abs(w);
   vec3 baseInk = mix(INK, INK_REMOTE, remoteRatio);
@@ -374,6 +382,7 @@ void main() {
   vec2 asp = vec2(uResolution.x/uResolution.y, 1.0);
   vec2 pos = uv * asp;
 
+  // ─── Ink field ───
   float fieldLocal = 0.0;
   float fieldRemote = 0.0;
   float virtueAccum = 0.0;
@@ -407,7 +416,8 @@ void main() {
 
     float d = length(delta);
 
-    float sigMul = mix(1.4, 1.7, kind);
+    // Slightly tighter sigma but still soft
+    float sigMul = mix(1.25, 1.55, kind);
     float dwellBoost = 1.0 + smoothstep(0.0, 2.5, dwell) * 0.35;
     float sig = r * sigMul * dwellBoost;
     float g = exp(-d*d/(2.0*sig*sig));
@@ -439,8 +449,12 @@ void main() {
 
   float ink = clamp(shadow*0.55 + core*0.35 + halo, 0.0, 1.0);
 
-  float edgeReal = smoothstep(0.0, 0.15, df);
-  float edgeVirtual = smoothstep(0.0, 0.30, df);
+  // ─── Softer real edges ───
+  // Previously: edgeReal = smoothstep(0.0, 0.15, df) — too narrow, gave a hard outline
+  // Now: wider transition band so "real" still reads as more present than virtual,
+  // but no longer produces that crisp described border
+  float edgeReal = smoothstep(0.0, 0.22, df);
+  float edgeVirtual = smoothstep(0.0, 0.32, df);
   float edge = mix(edgeReal, edgeVirtual, avgVirtue);
   ink = mix(ink*0.55, ink, edge);
 
@@ -454,6 +468,62 @@ void main() {
 
   float grain = fbm(uv*80.0 + uTime*0.01) * 0.03;
   vec3 col = mix(PAPER + grain, ic, ink);
+
+  // ═══ BUBBLE PASS ═══
+  // Bubbles are dreamy iridescent radial gradients. They draw on top of ink
+  // but are added with a soft screen-like blend so they feel luminous.
+  for (int i = 0; i < ${MAX_BUBBLES}; i++) {
+    if (i >= uBubbleCount) break;
+    vec4 BA = uBubblesA[i];
+    vec3 colorA = uBubblesB[i].rgb;
+    vec3 colorB = uBubblesC[i].rgb;
+
+    vec2 bp = BA.xy * asp;
+    float br = BA.z;
+    float life = BA.w;
+    if (life <= 0.0) continue;
+
+    float bd = distance(pos, bp);
+
+    // Bubble grows slightly over its lifetime (eases out)
+    float growT = 1.0 - life;
+    float currentR = br * (0.6 + growT * 0.55);
+
+    // Normalized distance from bubble center [0..1]
+    float nd = bd / max(currentR, 0.001);
+    if (nd > 1.2) continue;
+
+    // Radial gradient: colorA at center → colorB at rim
+    vec3 bubbleColor = mix(colorA, colorB, smoothstep(0.0, 0.85, nd));
+
+    // Add subtle iridescent shimmer based on angle and time
+    float ang = atan(pos.y - bp.y, pos.x - bp.x);
+    float shimmer = sin(ang * 3.0 + uTime * 2.5 + life * 8.0) * 0.5 + 0.5;
+    bubbleColor += vec3(shimmer * 0.15, shimmer * 0.1, shimmer * 0.18) * (1.0 - nd);
+
+    // Rim highlight — bright thin ring near edge for "bubble film" feel
+    float rim = smoothstep(0.75, 0.92, nd) * (1.0 - smoothstep(0.92, 1.0, nd));
+    bubbleColor += vec3(0.95, 0.92, 1.0) * rim * 0.7;
+
+    // Inner highlight blob (specular hint, off-center for water-droplet feel)
+    vec2 specOffset = vec2(currentR * 0.3, currentR * 0.35);
+    float specD = distance(pos, bp - specOffset);
+    float spec = exp(-specD * specD / (2.0 * pow(currentR * 0.18, 2.0))) * 0.8;
+    bubbleColor += vec3(1.0, 0.98, 1.0) * spec;
+
+    // Overall mask: soft falloff inside, sharp at outer rim
+    float mask = (1.0 - smoothstep(0.0, 1.0, nd));
+    // Life-driven alpha: pop fades out near end
+    float alpha = mask * smoothstep(0.0, 0.15, life) * smoothstep(0.0, 0.4, life * 1.4);
+
+    // Slight noise distortion to make it feel organic
+    float bubNoise = fbm(uv * 6.0 + life * 3.0) * 0.08;
+    alpha *= (1.0 + bubNoise);
+    alpha = clamp(alpha, 0.0, 1.0);
+
+    // Compositing: screen-blend feel via additive mix toward bubble color
+    col = mix(col, bubbleColor, alpha * 0.85);
+  }
 
   float vig = 1.0 - dot((uv-0.5)*1.1, (uv-0.5)*1.1);
   col *= 0.92 + 0.08*vig;
@@ -497,6 +567,15 @@ void main() {
         uTA.push(loc(`uTouchesA[${i}]`));
         uTB.push(loc(`uTouchesB[${i}]`));
       }
+      const uBubCnt = loc("uBubbleCount");
+      const uBubA = [],
+        uBubB = [],
+        uBubC = [];
+      for (let i = 0; i < MAX_BUBBLES; i++) {
+        uBubA.push(loc(`uBubblesA[${i}]`));
+        uBubB.push(loc(`uBubblesB[${i}]`));
+        uBubC.push(loc(`uBubblesC[${i}]`));
+      }
 
       // ═══════════════════════════════════════════════════════════
       //  Touch state
@@ -521,10 +600,82 @@ void main() {
 
       const TRAIL_LIFETIME = 0.55;
       const TRAIL_EMIT_INTERVAL = 0.018;
-      const BASE_MIN_RADIUS = 0.009;
+      // Smaller base — both because real edge was reading too big AND user feedback
+      const BASE_MIN_RADIUS = 0.007;
+
+      // ─── Tap detection thresholds ───
+      const TAP_MAX_DURATION = 0.22; // seconds: under this, it's a tap
+      const TAP_MAX_TRAVEL = 0.025; // relative units: under this, fingertip didn't really move
+      // While a touch is potentially-still-a-tap (within first ~220ms and barely moved),
+      // suppress its black ink rendering so we don't get a flash before the bubble.
+      const TAP_INK_SUPPRESS_TIME = 0.22;
+
+      // ─── Bubble palette ── dreamy / iridescent / pastel ───
+      // Chosen to evoke soap bubbles: pearly pinks, periwinkles, mint, peach, lemon.
+      // Each entry is [colorA, colorB] for the radial gradient.
+      const BUBBLE_PALETTE = [
+        // rose → violet
+        [
+          [1.0, 0.82, 0.92],
+          [0.78, 0.62, 0.95],
+        ],
+        // mint → cyan
+        [
+          [0.78, 1.0, 0.92],
+          [0.55, 0.85, 0.98],
+        ],
+        // peach → coral
+        [
+          [1.0, 0.88, 0.78],
+          [0.98, 0.65, 0.78],
+        ],
+        // lemon → mint
+        [
+          [1.0, 0.96, 0.78],
+          [0.78, 0.95, 0.85],
+        ],
+        // periwinkle → lilac
+        [
+          [0.78, 0.85, 1.0],
+          [0.92, 0.78, 1.0],
+        ],
+        // sky → rose
+        [
+          [0.78, 0.92, 1.0],
+          [1.0, 0.82, 0.9],
+        ],
+        // mint → lemon
+        [
+          [0.82, 0.98, 0.85],
+          [0.98, 0.95, 0.75],
+        ],
+        // lavender → peach
+        [
+          [0.88, 0.82, 0.98],
+          [1.0, 0.85, 0.78],
+        ],
+      ];
+
+      // Active bubbles list
+      const bubbles = [];
+
+      function spawnBubble(x, y, baseRadius) {
+        const palette =
+          BUBBLE_PALETTE[Math.floor(Math.random() * BUBBLE_PALETTE.length)];
+        bubbles.push({
+          x,
+          y,
+          radius: Math.max(baseRadius * 2.8, 0.05), // bubbles are larger than ink dots
+          birthT: performance.now() / 1000,
+          lifeDuration: 0.65 + Math.random() * 0.25, // 0.65-0.9s
+          colorA: palette[0],
+          colorB: palette[1],
+        });
+        if (bubbles.length > MAX_BUBBLES) bubbles.shift();
+      }
 
       // ═══════════════════════════════════════════════════════════
-      //  PeerJS Connection — now with TURN fallback
+      //  PeerJS Connection (unchanged from working version)
       // ═══════════════════════════════════════════════════════════
       let peer = null;
       let conn = null;
@@ -547,11 +698,6 @@ void main() {
 
       const ROOM_PREFIX = "hpnn-";
 
-      // ─── ICE servers: STUN + free public TURN (Open Relay Project) ───
-      // Open Relay Project provides free TURN for open-source / non-commercial use.
-      // Without TURN, two devices behind strict NATs cannot connect at all.
-      // With TURN, the data is relayed through a public server (slightly higher
-      // latency but virtually guarantees a connection).
       const PEER_CONFIG = {
         debug: 1,
         config: {
@@ -559,7 +705,6 @@ void main() {
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
             { urls: "stun:stun.cloudflare.com:3478" },
-            // Open Relay Project — free public TURN
             {
               urls: "turn:openrelay.metered.ca:80",
               username: "openrelayproject",
@@ -695,9 +840,6 @@ void main() {
         setTimeout(showPairingAgain, 120);
       });
 
-      // ─── ICE state monitor ───
-      // Polls the underlying RTCPeerConnection's iceConnectionState every 500ms
-      // and updates the UI hint, so user can see what's happening during handshake.
       function startIceMonitor(statusEl) {
         if (iceMonitorInterval) clearInterval(iceMonitorInterval);
         iceMonitorInterval = setInterval(() => {
@@ -739,7 +881,6 @@ void main() {
           setHint(hostStatusEl, "正 在 建 立", null);
           startIceMonitor(hostStatusEl);
 
-          // 20 second timeout — TURN can take a while on slow networks
           hostTimeout = setTimeout(() => {
             if (!isConnected) {
               setHint(hostStatusEl, "通 道 未 建 立 · 请 朋 友 重 试", "error");
@@ -805,7 +946,6 @@ void main() {
             setupConn();
             startIceMonitor(joinStatusEl);
 
-            // 20 second timeout
             joinTimeout = setTimeout(() => {
               if (!isConnected) {
                 setHint(joinStatusEl, "通 道 未 通 · 网 络 受 限", "error");
@@ -849,7 +989,6 @@ void main() {
           isConnected = true;
           connDot.classList.add("connected");
           exitBtn.classList.add("visible");
-
           if (joinTimeout) {
             clearTimeout(joinTimeout);
             joinTimeout = null;
@@ -862,12 +1001,8 @@ void main() {
             clearInterval(iceMonitorInterval);
             iceMonitorInterval = null;
           }
-
-          if (isHost) {
-            setHint(hostStatusEl, "已 接 入", "success");
-          } else {
-            setHint(joinStatusEl, "已 连 接", "success");
-          }
+          if (isHost) setHint(hostStatusEl, "已 接 入", "success");
+          else setHint(joinStatusEl, "已 连 接", "success");
           setTimeout(closeOverlay, 700);
         });
 
@@ -880,9 +1015,8 @@ void main() {
         });
 
         conn.on("close", () => {
-          if (isConnected) {
-            showPairingAgain();
-          } else {
+          if (isConnected) showPairingAgain();
+          else {
             isConnected = false;
             connDot.classList.remove("connected");
             exitBtn.classList.remove("visible");
@@ -924,10 +1058,20 @@ void main() {
             dwell: 0,
             stillX: msg.x,
             stillY: msg.y,
+            birthT: performance.now() / 1000, // for tap detection
+            maxTravel: 0,
+            isTap: true,
           });
         } else if (msg.type === "move") {
           const existing = remoteActive.get(msg.id);
           if (existing) {
+            const dx = msg.x - existing.x,
+              dy = msg.y - existing.y;
+            existing.maxTravel = Math.max(
+              existing.maxTravel,
+              Math.sqrt(dx * dx + dy * dy),
+            );
+            if (existing.maxTravel > TAP_MAX_TRAVEL) existing.isTap = false;
             existing.targetX = msg.x;
             existing.targetY = msg.y;
             existing.targetR = msg.r;
@@ -947,19 +1091,32 @@ void main() {
               dwell: 0,
               stillX: msg.x,
               stillY: msg.y,
+              birthT: performance.now() / 1000,
+              maxTravel: 0,
+              isTap: true,
             });
           }
         } else if (msg.type === "up") {
           const ex = remoteActive.get(msg.id);
           if (ex) {
-            remoteFading.push({
-              x: ex.x,
-              y: ex.y,
-              radius: ex.radius,
-              fadeAlpha: 1.0,
-            });
+            const duration = performance.now() / 1000 - ex.birthT;
+            // remote tap detection
+            if (duration < TAP_MAX_DURATION && ex.maxTravel < TAP_MAX_TRAVEL) {
+              spawnBubble(ex.x, ex.y, ex.radius);
+            } else {
+              remoteFading.push({
+                x: ex.x,
+                y: ex.y,
+                radius: ex.radius,
+                fadeAlpha: 1.0,
+              });
+            }
             remoteActive.delete(msg.id);
           }
+        } else if (msg.type === "bubble") {
+          // explicit bubble message from remote (alternative path — used when
+          // sender already knows it's a tap, ensures no missing bubble due to ordering)
+          spawnBubble(msg.x, msg.y, msg.r || 0.02);
         }
       }
 
@@ -989,12 +1146,19 @@ void main() {
           stillX: n.x,
           stillY: n.y,
           lastTrailT: now,
+          birthT: now,
+          maxTravel: 0,
+          isTap: true, // optimistically true; cleared on motion or duration
         });
       }
 
       function updateLocal(id, n) {
         const ex = localActive.get(id);
         if (!ex) return;
+        const dx = n.x - ex.x,
+          dy = n.y - ex.y;
+        ex.maxTravel = Math.max(ex.maxTravel, Math.sqrt(dx * dx + dy * dy));
+        if (ex.maxTravel > TAP_MAX_TRAVEL) ex.isTap = false;
         ex.x = n.x;
         ex.y = n.y;
         ex.radius = n.radius;
@@ -1051,12 +1215,22 @@ void main() {
           for (const t of e.changedTouches) {
             const ex = localActive.get(t.identifier);
             if (ex) {
-              localFading.push({
-                x: ex.x,
-                y: ex.y,
-                radius: ex.radius,
-                fadeAlpha: 1.0,
-              });
+              const duration = performance.now() / 1000 - ex.birthT;
+              const isTap =
+                duration < TAP_MAX_DURATION && ex.maxTravel < TAP_MAX_TRAVEL;
+              if (isTap) {
+                // local tap → spawn bubble, do NOT push fading ink
+                spawnBubble(ex.x, ex.y, ex.radius);
+                // notify remote so they see the bubble too
+                sendMsg({ type: "bubble", x: ex.x, y: ex.y, r: ex.radius });
+              } else {
+                localFading.push({
+                  x: ex.x,
+                  y: ex.y,
+                  radius: ex.radius,
+                  fadeAlpha: 1.0,
+                });
+              }
               localActive.delete(t.identifier);
               sendMsg({ type: "up", id: t.identifier });
             }
@@ -1113,12 +1287,20 @@ void main() {
           mDown = false;
           const ex = localActive.get("m");
           if (ex) {
-            localFading.push({
-              x: ex.x,
-              y: ex.y,
-              radius: ex.radius,
-              fadeAlpha: 1.0,
-            });
+            const duration = performance.now() / 1000 - ex.birthT;
+            const isTap =
+              duration < TAP_MAX_DURATION && ex.maxTravel < TAP_MAX_TRAVEL;
+            if (isTap) {
+              spawnBubble(ex.x, ex.y, ex.radius);
+              sendMsg({ type: "bubble", x: ex.x, y: ex.y, r: ex.radius });
+            } else {
+              localFading.push({
+                x: ex.x,
+                y: ex.y,
+                radius: ex.radius,
+                fadeAlpha: 1.0,
+              });
+            }
             localActive.delete("m");
             sendMsg({ type: "up", id: "m" });
           }
@@ -1127,7 +1309,7 @@ void main() {
       });
 
       // ═══════════════════════════════════════════════════════════
-      //  Physics step
+      //  Physics
       // ═══════════════════════════════════════════════════════════
       function stepPoint(p, dt) {
         const dx = p.x - p.lastX;
@@ -1319,6 +1501,14 @@ void main() {
         refreshState();
         stepWarmth(dt);
 
+        // Step bubbles: life decays from 1 to 0
+        for (let i = bubbles.length - 1; i >= 0; i--) {
+          const b = bubbles[i];
+          const age = nowS - b.birthT;
+          b.life = 1.0 - age / b.lifeDuration;
+          if (b.life <= 0) bubbles.splice(i, 1);
+        }
+
         gl.uniform2f(uRes, canvas.width, canvas.height);
         gl.uniform1f(uTm, now / 1000);
         gl.uniform1f(uW, warmth);
@@ -1334,15 +1524,16 @@ void main() {
           if (remoteFading[i].fadeAlpha <= 0) remoteFading.splice(i, 1);
         }
 
+        // ─── Pack ink slots ───
         const slots = [];
-        const pushSlot = (p, kind, virtue, dwellOverride) => {
+        const pushSlot = (p, kind, virtue, dwellOverride, radiusScale) => {
           if (slots.length >= MAX_SLOTS) return;
           const dwell =
             dwellOverride !== undefined ? dwellOverride : p.dwell || 0;
           slots.push({
             x: p.x,
             y: p.y,
-            radius: p.radius,
+            radius: p.radius * (radiusScale !== undefined ? radiusScale : 1),
             kind,
             vx: p.vx || 0,
             vy: p.vy || 0,
@@ -1351,8 +1542,23 @@ void main() {
           });
         };
 
-        for (const p of localActive.values()) pushSlot(p, 0, 0);
-        for (const p of remoteActive.values()) pushSlot(p, 1, 0);
+        // Active touches: if still in the "is-it-a-tap" window AND hasn't moved much,
+        // suppress its visual to a near-invisible level so we don't get a black flash
+        // before the bubble appears
+        for (const p of localActive.values()) {
+          const age = nowS - p.birthT;
+          const inTapWindow =
+            age < TAP_INK_SUPPRESS_TIME && p.maxTravel < TAP_MAX_TRAVEL;
+          const radiusScale = inTapWindow ? 0.15 : 1.0;
+          pushSlot(p, 0, 0, undefined, radiusScale);
+        }
+        for (const p of remoteActive.values()) {
+          const age = nowS - p.birthT;
+          const inTapWindow =
+            age < TAP_INK_SUPPRESS_TIME && p.maxTravel < TAP_MAX_TRAVEL;
+          const radiusScale = inTapWindow ? 0.15 : 1.0;
+          pushSlot(p, 1, 0, undefined, radiusScale);
+        }
 
         for (const b of bridgeLocal) pushSlot(b, 0, 0.5, 0);
         for (const b of bridgeRemote) pushSlot(b, 1, 0.5, 0);
@@ -1425,6 +1631,22 @@ void main() {
           } else {
             gl.uniform4f(uTA[i], -10, -10, 0.001, 0);
             gl.uniform4f(uTB[i], 0, 0, 0, 0);
+          }
+        }
+
+        // ─── Pack bubbles ───
+        const bcnt = Math.min(bubbles.length, MAX_BUBBLES);
+        gl.uniform1i(uBubCnt, bcnt);
+        for (let i = 0; i < MAX_BUBBLES; i++) {
+          if (i < bcnt) {
+            const b = bubbles[i];
+            gl.uniform4f(uBubA[i], b.x, b.y, b.radius, b.life);
+            gl.uniform4f(uBubB[i], b.colorA[0], b.colorA[1], b.colorA[2], 1);
+            gl.uniform4f(uBubC[i], b.colorB[0], b.colorB[1], b.colorB[2], 1);
+          } else {
+            gl.uniform4f(uBubA[i], -10, -10, 0.001, 0);
+            gl.uniform4f(uBubB[i], 0, 0, 0, 0);
+            gl.uniform4f(uBubC[i], 0, 0, 0, 0);
           }
         }
 
