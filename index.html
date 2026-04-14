@@ -302,15 +302,13 @@ void main() {
   gl_Position = vec4(aPos, 0.0, 1.0);
 }`;
 
-      const MAX_SLOTS = 32; // bumped from 24 to accommodate denser interpolated trails
+      const MAX_SLOTS = 32;
 
-      // ─── New: per-slot hue support ───
-      // uTouchesB.x and .y are now reused for hue color (RG of color), with
-      // hue stored as a precomputed RGB pair. We split into two uniforms:
-      //   uTouchesA = vec4(x, y, radius, kind)
-      //   uTouchesB = vec4(virtue, dwell, hueR, hueG)
-      //   uTouchesC = vec4(hueB, _, _, _)  ← only hueB used; we use vec4 for alignment
-      // To keep things simple I'll use 3 vec4 uniforms per slot.
+      // ─── Shader: now with per-touch hue + softer edges ───
+      // Each slot now has THREE vec4s:
+      //   A = (x, y, radius, kind)        kind 0=local, 1=remote
+      //   B = (velX, velY, virtue, dwell)
+      //   C = (hueR, hueG, hueB, hueAmt)  hueAmt 0=pure ink, 1=pure colored
       const fragSrc = `
 #extension GL_OES_standard_derivatives : enable
 precision highp float;
@@ -319,9 +317,9 @@ varying vec2 vUv;
 uniform vec2 uResolution;
 uniform float uTime;
 uniform int uCount;
-uniform vec4 uTouchesA[${MAX_SLOTS}]; // x, y, radius, kind
-uniform vec4 uTouchesB[${MAX_SLOTS}]; // virtue, dwell, hasHue, _
-uniform vec4 uTouchesC[${MAX_SLOTS}]; // hueR, hueG, hueB, _
+uniform vec4 uTouchesA[${MAX_SLOTS}];
+uniform vec4 uTouchesB[${MAX_SLOTS}];
+uniform vec4 uTouchesC[${MAX_SLOTS}];
 uniform float uWarmth;
 
 const vec3 PAPER = vec3(0.949, 0.937, 0.914);
@@ -355,7 +353,7 @@ float fbm(vec2 p) {
   return v;
 }
 
-vec3 mapInk(float depth, float w, float remoteRatio, vec3 hueColor, float hasHue) {
+vec3 mapInk(float depth, float w, float remoteRatio, vec3 hueColor, float hueAmt) {
   vec3 warmG = mix(W0, W1, smoothstep(0.0, 0.45, depth));
   warmG = mix(warmG, W2, smoothstep(0.35, 1.0, depth));
 
@@ -375,18 +373,15 @@ vec3 mapInk(float depth, float w, float remoteRatio, vec3 hueColor, float hasHue
   float absW = abs(w);
   vec3 baseInk = mix(INK, INK_REMOTE, remoteRatio);
 
-  // Inject hue: replace baseInk with a tinted version when hasHue > 0
-  // Hue is mixed at edge (lighter/saturated) and dampened at core (where
-  // it becomes deeper) so colored ink behaves like real dyed water:
-  // diluted at the edge, concentrated in the middle but darker.
-  if (hasHue > 0.5) {
-    vec3 tintedDeep = hueColor * 0.35; // dark concentrated heart
-    vec3 tintedSoft = hueColor * 1.05; // bright dispersed edge
-    vec3 tinted = mix(tintedSoft, tintedDeep, smoothstep(0.2, 0.9, depth));
-    baseInk = tinted;
-  }
+  // Color tap hue: independent of warmth state machine.
+  // We replace baseInk with hueColor where hueAmt is high, with a deeper
+  // shade in the core and the lighter hue at the edge to feel like ink soaked into paper.
+  vec3 hueDeep = hueColor * 0.55;
+  vec3 hueLight = mix(hueColor, vec3(1.0, 1.0, 1.0), 0.25);
+  vec3 hueGrad = mix(hueDeep, hueLight, smoothstep(0.0, 1.0, depth));
+  baseInk = mix(baseInk, hueGrad, hueAmt);
 
-  return mix(baseInk, colored, smoothstep(0.0, 0.3, absW));
+  return mix(baseInk, colored, smoothstep(0.0, 0.3, absW) * (1.0 - hueAmt * 0.7));
 }
 
 void main() {
@@ -398,8 +393,8 @@ void main() {
   float fieldRemote = 0.0;
   float virtueAccum = 0.0;
   float totalWeight = 0.0;
-  vec3 hueAccum = vec3(0.0);
-  float hueWeight = 0.0;
+  vec3  hueAccum = vec3(0.0);
+  float hueAmtAccum = 0.0;
 
   for(int i=0;i<${MAX_SLOTS};i++){
     if(i>=uCount) break;
@@ -411,20 +406,31 @@ void main() {
     vec2 tp = A.xy * asp;
     float r = A.z;
     float kind = A.w;
-    float virtue = B.x;
-    float dwell = B.y;
-    float hasHue = B.z;
+    vec2 vel = B.xy;
+    float virtue = B.z;
+    float dwell = B.w;
     vec3 hueColor = C.xyz;
+    float hueAmt = C.w;
 
     vec2 delta = pos - tp;
+
+    // ─── Velocity stretch — much gentler now ───
+    float speed = length(vel);
+    float stretchAmt = clamp(speed * 1.2, 0.0, 0.18);
+    if (speed > 0.0001) {
+      vec2 vdir = vel / speed;
+      vec2 perp = vec2(-vdir.y, vdir.x);
+      float along = dot(delta, vdir);
+      float across = dot(delta, perp);
+      along /= (1.0 + stretchAmt);
+      delta = vdir * along + perp * across;
+    }
+
     float d = length(delta);
 
-    // ── KEY CHANGE: NO geometric stretching anymore ──
-    // The blob is always perfectly round. Motion is expressed
-    // entirely through the trail samples, not by deforming the head.
-
-    float sigMul = mix(1.35, 1.55, kind);
-    float dwellBoost = 1.0 + smoothstep(0.0, 2.5, dwell) * 0.30;
+    // ─── Smaller tighter blob, less sigma multiplier ───
+    float sigMul = mix(1.15, 1.4, kind);
+    float dwellBoost = 1.0 + smoothstep(0.0, 2.5, dwell) * 0.35;
     float sig = r * sigMul * dwellBoost;
     float g = exp(-d*d/(2.0*sig*sig));
 
@@ -437,19 +443,23 @@ void main() {
     virtueAccum += g * virtue;
     totalWeight += g;
 
-    if (hasHue > 0.5) {
-      hueAccum += hueColor * g;
-      hueWeight += g;
-    }
+    // accumulate hue weighted by this point's contribution
+    hueAccum += hueColor * g * hueAmt;
+    hueAmtAccum += g * hueAmt;
   }
 
   float field = fieldLocal + fieldRemote;
   float remoteRatio = field > 0.001 ? clamp(fieldRemote / field, 0.0, 1.0) : 0.0;
   float avgVirtue = totalWeight > 0.001 ? clamp(virtueAccum / totalWeight, 0.0, 1.0) : 0.0;
 
-  // Average hue across overlapping colored points (lets colors blend on overlap)
-  float hueRatio = totalWeight > 0.001 ? clamp(hueWeight / totalWeight, 0.0, 1.0) : 0.0;
-  vec3 avgHue = hueWeight > 0.001 ? hueAccum / hueWeight : vec3(0.0);
+  vec3 avgHue = vec3(0.0);
+  float avgHueAmt = 0.0;
+  if (totalWeight > 0.001) {
+    avgHueAmt = clamp(hueAmtAccum / totalWeight, 0.0, 1.0);
+    if (hueAmtAccum > 0.001) {
+      avgHue = hueAccum / hueAmtAccum;
+    }
+  }
 
   float t = uTime * 0.15;
   float n = fbm(pos*3.0 + vec2(t*0.3, t*0.2)) * 0.12;
@@ -464,10 +474,11 @@ void main() {
 
   float ink = clamp(shadow*0.55 + core*0.35 + halo, 0.0, 1.0);
 
-  // ── Wider edge smoothstep — no more visible "outline" on real touches ──
-  // Real edges still slightly tighter than virtual, but neither has a hard line.
-  float edgeReal = smoothstep(0.0, 0.22, df);
-  float edgeVirtual = smoothstep(0.0, 0.32, df);
+  // ─── Softer edges: real edge no longer sharply defined ───
+  // Both real and virtual now use wide smoothsteps; the difference is
+  // density at the core, not the presence of an outline.
+  float edgeReal = smoothstep(0.0, 0.28, df);
+  float edgeVirtual = smoothstep(0.0, 0.42, df);
   float edge = mix(edgeReal, edgeVirtual, avgVirtue);
   ink = mix(ink*0.55, ink, edge);
 
@@ -477,7 +488,7 @@ void main() {
   ink = clamp(ink + sin(uTime*4.0)*0.04*mp, 0.0, 1.0);
 
   float depth = clamp(df / 1.5, 0.0, 1.0);
-  vec3 ic = mapInk(depth, uWarmth, remoteRatio, avgHue, hueRatio);
+  vec3 ic = mapInk(depth, uWarmth, remoteRatio, avgHue, avgHueAmt);
 
   float grain = fbm(uv*80.0 + uTime*0.01) * 0.03;
   vec3 col = mix(PAPER + grain, ic, ink);
@@ -549,29 +560,31 @@ void main() {
         mergeT = 0;
 
       const TRAIL_LIFETIME = 0.55;
-      const BASE_MIN_RADIUS = 0.007; // smaller still
-      const TAP_MAX_DURATION = 0.25; // seconds
-      const TAP_MAX_MOVE = 0.025; // relative units
+      const TRAIL_EMIT_INTERVAL = 0.012;
+      const BASE_MIN_RADIUS = 0.006; // smaller still
 
-      // ─── Bubble palette: dreamy low-saturation colors ───
-      // Stored as linear RGB triples (0..1)
-      const DREAM_PALETTE = [
-        [0.78, 0.62, 0.92], // lavender
-        [0.55, 0.82, 0.95], // sky cyan
-        [0.65, 0.92, 0.78], // mint
-        [0.98, 0.74, 0.62], // peach
-        [0.99, 0.92, 0.62], // cream yellow
-        [0.95, 0.68, 0.85], // rose pink
-        [0.72, 0.78, 0.98], // periwinkle
-        [0.88, 0.85, 0.98], // pale violet
+      // ─── Tap detection params ───
+      const TAP_MAX_DURATION = 0.28; // seconds; under this counts as tap
+      const TAP_MAX_DISPLACEMENT = 0.025; // relative units; finger barely moved
+
+      // ─── Dreamy palette for colored tap dots ───
+      const PALETTE = [
+        [0.92, 0.62, 0.78], // pink lavender
+        [0.55, 0.78, 0.92], // cyan blue
+        [0.62, 0.88, 0.78], // mint
+        [0.96, 0.72, 0.55], // peach
+        [0.95, 0.88, 0.55], // lemon cream
+        [0.74, 0.68, 0.92], // periwinkle
+        [0.95, 0.68, 0.65], // coral
+        [0.68, 0.92, 0.86], // aqua
       ];
 
       function randomHue() {
-        return DREAM_PALETTE[Math.floor(Math.random() * DREAM_PALETTE.length)];
+        return PALETTE[Math.floor(Math.random() * PALETTE.length)];
       }
 
       // ═══════════════════════════════════════════════════════════
-      //  PeerJS Connection (unchanged)
+      //  PeerJS Connection — unchanged from working version
       // ═══════════════════════════════════════════════════════════
       let peer = null;
       let conn = null;
@@ -703,12 +716,14 @@ void main() {
         backLink.style.display = "block";
         startHost();
       });
+
       document.getElementById("btnJoin").addEventListener("click", () => {
         modeSelect.style.display = "none";
         joinView.style.display = "flex";
         backLink.style.display = "block";
         setTimeout(() => codeInput.focus(), 100);
       });
+
       btnConnect.addEventListener("click", () => {
         const code = codeInput.value.trim().toUpperCase();
         if (code.length !== 4) {
@@ -717,6 +732,7 @@ void main() {
         }
         startJoin(code);
       });
+
       codeInput.addEventListener("input", (e) => {
         e.target.value = e.target.value.toUpperCase();
       });
@@ -762,13 +778,10 @@ void main() {
         const peerId = ROOM_PREFIX + code;
         roomCodeEl.textContent = code;
         setHint(hostStatusEl, "准 备 中", null);
-
         peer = new Peer(peerId, PEER_CONFIG);
-
         peer.on("open", () => {
           setHint(hostStatusEl, "等 待 接 入", null);
         });
-
         peer.on("connection", (c) => {
           conn = c;
           setHint(hostStatusEl, "正 在 建 立", null);
@@ -784,7 +797,6 @@ void main() {
           }, 20000);
           setupConn();
         });
-
         peer.on("error", (err) => {
           console.error("host peer err", err.type, err);
           if (err.type === "unavailable-id" && retry < 3) {
@@ -804,7 +816,6 @@ void main() {
             setHint(hostStatusEl, "出 错 · " + err.type, "error");
           }
         });
-
         peer.on("disconnected", () => {
           setHint(hostStatusEl, "信 号 中 断 · 重 连 中", "error");
           try {
@@ -817,10 +828,8 @@ void main() {
         isHost = false;
         btnConnect.disabled = true;
         setHint(joinStatusEl, "连 接 中", null);
-
         peer = new Peer(null, PEER_CONFIG);
         const targetId = ROOM_PREFIX + code;
-
         peer.on("open", (myId) => {
           setTimeout(() => {
             conn = peer.connect(targetId, {
@@ -850,7 +859,6 @@ void main() {
             }, 20000);
           }, 400);
         });
-
         peer.on("error", (err) => {
           console.error("join peer err", err.type, err);
           if (joinTimeout) {
@@ -889,8 +897,11 @@ void main() {
             clearInterval(iceMonitorInterval);
             iceMonitorInterval = null;
           }
-          if (isHost) setHint(hostStatusEl, "已 接 入", "success");
-          else setHint(joinStatusEl, "已 连 接", "success");
+          if (isHost) {
+            setHint(hostStatusEl, "已 接 入", "success");
+          } else {
+            setHint(joinStatusEl, "已 连 接", "success");
+          }
           setTimeout(closeOverlay, 700);
         });
         conn.on("data", (msg) => {
@@ -901,8 +912,9 @@ void main() {
           handleRemoteMsg(msg);
         });
         conn.on("close", () => {
-          if (isConnected) showPairingAgain();
-          else {
+          if (isConnected) {
+            showPairingAgain();
+          } else {
             isConnected = false;
             connDot.classList.remove("connected");
             exitBtn.classList.remove("visible");
@@ -915,6 +927,7 @@ void main() {
       function closeOverlay() {
         overlay.classList.add("hidden");
       }
+
       function sendMsg(msg) {
         if (conn && isConnected) {
           try {
@@ -925,6 +938,7 @@ void main() {
 
       function handleRemoteMsg(msg) {
         if (!msg || !msg.type) return;
+
         if (msg.type === "down") {
           remoteActive.set(msg.id, {
             x: msg.x,
@@ -935,6 +949,7 @@ void main() {
             targetR: msg.r,
             lastX: msg.x,
             lastY: msg.y,
+            lastSampleT: performance.now() / 1000,
             vx: 0,
             vy: 0,
             dwell: 0,
@@ -942,16 +957,14 @@ void main() {
             stillY: msg.y,
             lastTrailX: msg.x,
             lastTrailY: msg.y,
-            hue: null, // remote hue is set by 'hue' message from peer
-            startT: performance.now() / 1000,
-            moveDist: 0,
+            lastTrailT: performance.now() / 1000,
           });
         } else if (msg.type === "move") {
-          const ex = remoteActive.get(msg.id);
-          if (ex) {
-            ex.targetX = msg.x;
-            ex.targetY = msg.y;
-            ex.targetR = msg.r;
+          const existing = remoteActive.get(msg.id);
+          if (existing) {
+            existing.targetX = msg.x;
+            existing.targetY = msg.y;
+            existing.targetR = msg.r;
           } else {
             remoteActive.set(msg.id, {
               x: msg.x,
@@ -962,6 +975,7 @@ void main() {
               targetR: msg.r,
               lastX: msg.x,
               lastY: msg.y,
+              lastSampleT: performance.now() / 1000,
               vx: 0,
               vy: 0,
               dwell: 0,
@@ -969,30 +983,35 @@ void main() {
               stillY: msg.y,
               lastTrailX: msg.x,
               lastTrailY: msg.y,
-              hue: null,
-              startT: performance.now() / 1000,
-              moveDist: 0,
+              lastTrailT: performance.now() / 1000,
             });
           }
         } else if (msg.type === "up") {
           const ex = remoteActive.get(msg.id);
           if (ex) {
+            // Detect tap on remote side too — we use local tap detection rules
+            const dur = performance.now() / 1000 - (ex.spawnT || 0);
+            const disp = Math.hypot(
+              ex.x - (ex.spawnX || ex.x),
+              ex.y - (ex.spawnY || ex.y),
+            );
+            let hue = [0, 0, 0],
+              hueAmt = 0;
+            if (msg.tapHue) {
+              // remote already decided this was a colored tap
+              hue = msg.tapHue;
+              hueAmt = 1.0;
+            }
             remoteFading.push({
               x: ex.x,
               y: ex.y,
               radius: ex.radius,
               fadeAlpha: 1.0,
-              hue: ex.hue,
+              hue,
+              hueAmt,
             });
             remoteActive.delete(msg.id);
           }
-        } else if (msg.type === "hue") {
-          // peer is telling us their tap turned colored; apply hue to that touch
-          const ex = remoteActive.get(msg.id);
-          if (ex) ex.hue = msg.hue;
-          // also color any recent fading point matching this id won't work because
-          // fading has no id; so this only catches still-active hue assignments.
-          // In practice 'hue' arrives before 'up' so this is fine.
         }
       }
 
@@ -1015,6 +1034,7 @@ void main() {
           radius: n.radius,
           lastX: n.x,
           lastY: n.y,
+          lastSampleT: now,
           vx: 0,
           vy: 0,
           dwell: 0,
@@ -1022,22 +1042,22 @@ void main() {
           stillY: n.y,
           lastTrailX: n.x,
           lastTrailY: n.y,
-          hue: null,
-          startT: now,
-          moveDist: 0,
+          lastTrailT: now,
+          spawnT: now,
+          spawnX: n.x,
+          spawnY: n.y,
+          maxDisp: 0,
         });
       }
 
       function updateLocal(id, n) {
         const ex = localActive.get(id);
         if (!ex) return;
-        // accumulate movement distance to detect "tap-vs-stroke"
-        const dx = n.x - ex.x,
-          dy = n.y - ex.y;
-        ex.moveDist += Math.sqrt(dx * dx + dy * dy);
         ex.x = n.x;
         ex.y = n.y;
         ex.radius = n.radius;
+        const disp = Math.hypot(n.x - ex.spawnX, n.y - ex.spawnY);
+        if (disp > ex.maxDisp) ex.maxDisp = disp;
       }
 
       canvas.addEventListener(
@@ -1084,43 +1104,51 @@ void main() {
         { passive: false },
       );
 
-      function handleRelease(id) {
-        const ex = localActive.get(id);
+      function liftLocal(touchId) {
+        const ex = localActive.get(touchId);
         if (!ex) return;
         const now = performance.now() / 1000;
-        const duration = now - ex.startT;
+        const dur = now - ex.spawnT;
+        const isTap =
+          dur < TAP_MAX_DURATION && ex.maxDisp < TAP_MAX_DISPLACEMENT;
 
-        // Was this a tap? short duration, minimal movement
-        let hue = ex.hue;
-        if (duration < TAP_MAX_DURATION && ex.moveDist < TAP_MAX_MOVE) {
+        let hue = [0, 0, 0],
+          hueAmt = 0;
+        if (isTap) {
           hue = randomHue();
-          sendMsg({ type: "hue", id, hue });
-          // Also retroactively color the active point so its fading ghost is colored
-          ex.hue = hue;
+          hueAmt = 1.0;
         }
+
         localFading.push({
           x: ex.x,
           y: ex.y,
           radius: ex.radius,
           fadeAlpha: 1.0,
-          hue: ex.hue,
+          hue,
+          hueAmt,
         });
-        localActive.delete(id);
-        sendMsg({ type: "up", id });
+        localActive.delete(touchId);
+
+        // tell remote whether this was a tap, so they render the colored ghost too
+        if (isTap) {
+          sendMsg({ type: "up", id: touchId, tapHue: hue });
+        } else {
+          sendMsg({ type: "up", id: touchId });
+        }
       }
 
       canvas.addEventListener(
         "touchend",
         (e) => {
           e.preventDefault();
-          for (const t of e.changedTouches) handleRelease(t.identifier);
+          for (const t of e.changedTouches) liftLocal(t.identifier);
           refreshState();
         },
         { passive: false },
       );
 
       canvas.addEventListener("touchcancel", (e) => {
-        for (const t of e.changedTouches) handleRelease(t.identifier);
+        for (const t of e.changedTouches) liftLocal(t.identifier);
         refreshState();
       });
 
@@ -1152,13 +1180,13 @@ void main() {
       canvas.addEventListener("mouseup", () => {
         if (mDown) {
           mDown = false;
-          handleRelease("m");
+          liftLocal("m");
           refreshState();
         }
       });
 
       // ═══════════════════════════════════════════════════════════
-      //  Physics step
+      //  Physics + Trail (with interpolation)
       // ═══════════════════════════════════════════════════════════
       function stepPoint(p, dt) {
         const dx = p.x - p.lastX;
@@ -1183,41 +1211,60 @@ void main() {
         p.lastY = p.y;
       }
 
-      // ─── KEY CHANGE: interpolated trail emission ───
-      // Instead of dropping one ghost per frame, we walk a line from
-      // the last trail position to the current position and place ghosts
-      // at fixed spatial intervals, guaranteeing a continuous tail.
-      const TRAIL_SPACING = 0.006; // relative units between ghosts
-
+      // ─── Interpolated trail emission ───
+      // Instead of dropping one sample per frame at the current point, we
+      // drop multiple samples *along the path* from the last trail point to
+      // the current point, spaced by a fixed distance. This makes the trail
+      // uniformly dense regardless of finger speed — no more visible point chains.
       function emitTrail(pool, p, now) {
+        // emission spacing in normalized screen units
+        const SPACING = Math.max(p.radius * 0.6, 0.006);
+
         const dx = p.x - p.lastTrailX;
         const dy = p.y - p.lastTrailY;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        // Long dwell: also emit a slow ghost in place to support "soaking" visual
-        const isSoaking = p.dwell > 0.5;
+        // also allow time-based emission for dwell soaking
+        const dt = now - p.lastTrailT;
 
-        if (dist < TRAIL_SPACING && !isSoaking) return;
+        // if barely moving and not dwelling deeply, skip
+        if (dist < SPACING && p.dwell < 0.5 && dt < 0.05) return;
 
-        // How many ghosts to drop along this segment?
-        const n = Math.max(1, Math.floor(dist / TRAIL_SPACING));
-        for (let i = 1; i <= n; i++) {
-          const t = i / n;
-          const gx = p.lastTrailX + dx * t;
-          const gy = p.lastTrailY + dy * t;
+        // dwell case: emit one sample at current position (soaking)
+        if (dist < SPACING && p.dwell >= 0.5) {
           pool.push({
-            x: gx,
-            y: gy,
-            radius: p.radius * (0.75 + Math.min(p.dwell, 1.0) * 0.25),
+            x: p.x,
+            y: p.y,
+            radius: p.radius * (0.7 + Math.min(p.dwell, 1.5) * 0.25),
             birthT: now,
-            hue: p.hue,
+            vx: 0,
+            vy: 0,
           });
+          p.lastTrailT = now;
+          if (pool.length > 200) pool.shift();
+          return;
         }
+
+        // motion case: interpolate between last trail point and current
+        const steps = Math.min(Math.ceil(dist / SPACING), 12); // cap to avoid spam
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          const sx = p.lastTrailX + dx * t;
+          const sy = p.lastTrailY + dy * t;
+          pool.push({
+            x: sx,
+            y: sy,
+            radius: p.radius * (0.85 + Math.min(p.dwell, 1.0) * 0.15),
+            birthT: now,
+            vx: p.vx * 0.3,
+            vy: p.vy * 0.3,
+          });
+          if (pool.length > 200) pool.shift();
+        }
+
         p.lastTrailX = p.x;
         p.lastTrailY = p.y;
-
-        // cap
-        while (pool.length > 200) pool.shift();
+        p.lastTrailT = now;
       }
 
       function stepTrails(pool, now) {
@@ -1238,13 +1285,15 @@ void main() {
             const d = Math.sqrt(dx * dx + dy * dy);
             if (d < 0.001) continue;
             if (d > 0.32) continue;
+            const t = 0.5;
             const closeness = 1.0 - d / 0.32;
             bridgePool.push({
-              x: a.x + dx * 0.5,
-              y: a.y + dy * 0.5,
+              x: a.x + dx * t,
+              y: a.y + dy * t,
               radius: (a.radius + b.radius) * 0.5 * closeness * 0.9,
               birthT: now,
-              hue: a.hue || b.hue || null,
+              vx: 0,
+              vy: 0,
             });
           }
         }
@@ -1262,19 +1311,19 @@ void main() {
                   dy = locals[i].y - locals[j].y;
                 if (
                   Math.sqrt(dx * dx + dy * dy) <
-                  (locals[i].radius + locals[j].radius) * 5.0
+                  (locals[i].radius + locals[j].radius) * 5.5
                 )
                   return true;
               }
           }
           return false;
         }
-
         for (const l of locals) {
           for (const r of remotes) {
             const dx = l.x - r.x,
               dy = l.y - r.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 0.22) return true;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < 0.22) return true;
           }
         }
         return false;
@@ -1345,6 +1394,7 @@ void main() {
           stepPoint(p, dt);
           emitTrail(localTrails, p, nowS);
         }
+
         for (const r of remoteActive.values()) {
           r.x += (r.targetX - r.x) * Math.min(1, dt * 12);
           r.y += (r.targetY - r.y) * Math.min(1, dt * 12);
@@ -1368,21 +1418,26 @@ void main() {
         gl.uniform1f(uTm, now / 1000);
         gl.uniform1f(uW, warmth);
 
+        // fade legacy fading points and grow them slightly (the "blooming" of a tap dot)
         for (let i = localFading.length - 1; i >= 0; i--) {
-          localFading[i].fadeAlpha -= 0.025;
-          localFading[i].radius *= 1.008;
-          if (localFading[i].fadeAlpha <= 0) localFading.splice(i, 1);
+          const f = localFading[i];
+          f.fadeAlpha -= 0.025;
+          // colored tap dots bloom outward more dramatically than ink
+          const growRate = f.hueAmt > 0 ? 1.025 : 1.008;
+          f.radius *= growRate;
+          if (f.fadeAlpha <= 0) localFading.splice(i, 1);
         }
         for (let i = remoteFading.length - 1; i >= 0; i--) {
-          remoteFading[i].fadeAlpha -= 0.025;
-          remoteFading[i].radius *= 1.008;
-          if (remoteFading[i].fadeAlpha <= 0) remoteFading.splice(i, 1);
+          const f = remoteFading[i];
+          f.fadeAlpha -= 0.025;
+          const growRate = f.hueAmt > 0 ? 1.025 : 1.008;
+          f.radius *= growRate;
+          if (f.fadeAlpha <= 0) remoteFading.splice(i, 1);
         }
 
-        // ─── Pack into uniform slots ───
+        // Pack slots
         const slots = [];
-
-        const pushSlot = (p, kind, virtue, dwellOverride, hue) => {
+        const pushSlot = (p, kind, virtue, dwellOverride, hue, hueAmt) => {
           if (slots.length >= MAX_SLOTS) return;
           const dwell =
             dwellOverride !== undefined ? dwellOverride : p.dwell || 0;
@@ -1391,17 +1446,19 @@ void main() {
             y: p.y,
             radius: p.radius,
             kind,
+            vx: p.vx || 0,
+            vy: p.vy || 0,
             virtue,
             dwell,
-            hue: hue !== undefined ? hue : p.hue || null,
+            hue: hue || [0, 0, 0],
+            hueAmt: hueAmt || 0,
           });
         };
 
         for (const p of localActive.values()) pushSlot(p, 0, 0);
         for (const p of remoteActive.values()) pushSlot(p, 1, 0);
-
-        for (const b of bridgeLocal) pushSlot(b, 0, 0.5, 0, b.hue);
-        for (const b of bridgeRemote) pushSlot(b, 1, 0.5, 0, b.hue);
+        for (const b of bridgeLocal) pushSlot(b, 0, 0.5, 0);
+        for (const b of bridgeRemote) pushSlot(b, 1, 0.5, 0);
 
         for (const t of localTrails) {
           if (slots.length >= MAX_SLOTS) break;
@@ -1410,11 +1467,14 @@ void main() {
           slots.push({
             x: t.x,
             y: t.y,
-            radius: t.radius * (0.4 + lifeT * 0.6),
+            radius: t.radius * (0.5 + lifeT * 0.5),
             kind: 0,
+            vx: t.vx,
+            vy: t.vy,
             virtue: 0.7 + (1.0 - lifeT) * 0.3,
             dwell: 0,
-            hue: t.hue || null,
+            hue: [0, 0, 0],
+            hueAmt: 0,
           });
         }
         for (const t of remoteTrails) {
@@ -1424,11 +1484,14 @@ void main() {
           slots.push({
             x: t.x,
             y: t.y,
-            radius: t.radius * (0.4 + lifeT * 0.6),
+            radius: t.radius * (0.5 + lifeT * 0.5),
             kind: 1,
+            vx: t.vx,
+            vy: t.vy,
             virtue: 0.8 + (1.0 - lifeT) * 0.2,
             dwell: 0,
-            hue: t.hue || null,
+            hue: [0, 0, 0],
+            hueAmt: 0,
           });
         }
 
@@ -1439,9 +1502,12 @@ void main() {
             y: f.y,
             radius: f.radius * f.fadeAlpha,
             kind: 0,
+            vx: 0,
+            vy: 0,
             virtue: 1.0 - f.fadeAlpha * 0.3,
             dwell: 0,
-            hue: f.hue || null,
+            hue: f.hue,
+            hueAmt: f.hueAmt * f.fadeAlpha,
           });
         }
         for (const f of remoteFading) {
@@ -1451,9 +1517,12 @@ void main() {
             y: f.y,
             radius: f.radius * f.fadeAlpha,
             kind: 1,
+            vx: 0,
+            vy: 0,
             virtue: 1.0 - f.fadeAlpha * 0.2,
             dwell: 0,
-            hue: f.hue || null,
+            hue: f.hue,
+            hueAmt: f.hueAmt * f.fadeAlpha,
           });
         }
 
@@ -1462,11 +1531,9 @@ void main() {
         for (let i = 0; i < MAX_SLOTS; i++) {
           if (i < cnt) {
             const p = slots[i];
-            const hasHue = p.hue ? 1.0 : 0.0;
-            const h = p.hue || [0, 0, 0];
             gl.uniform4f(uTA[i], p.x, p.y, Math.max(p.radius, 0.001), p.kind);
-            gl.uniform4f(uTB[i], p.virtue, p.dwell, hasHue, 0);
-            gl.uniform4f(uTC[i], h[0], h[1], h[2], 0);
+            gl.uniform4f(uTB[i], p.vx, p.vy, p.virtue, p.dwell);
+            gl.uniform4f(uTC[i], p.hue[0], p.hue[1], p.hue[2], p.hueAmt);
           } else {
             gl.uniform4f(uTA[i], -10, -10, 0.001, 0);
             gl.uniform4f(uTB[i], 0, 0, 0, 0);
