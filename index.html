@@ -213,6 +213,33 @@
         pointer-events: auto;
         padding: 8px;
       }
+
+      /* ─── Exit button (visible only when connected) ─── */
+      .exit-btn {
+        position: fixed;
+        bottom: 18px;
+        left: 24px;
+        z-index: 4;
+        font-family: inherit;
+        font-size: 10px;
+        letter-spacing: 0.2em;
+        color: #1a1a1a;
+        opacity: 0;
+        background: none;
+        border: none;
+        padding: 10px 14px 10px 0;
+        cursor: pointer;
+        text-transform: uppercase;
+        transition: opacity 0.8s ease;
+        pointer-events: none;
+      }
+      .exit-btn.visible {
+        opacity: 0.4;
+        pointer-events: auto;
+      }
+      .exit-btn:active {
+        opacity: 0.7;
+      }
     </style>
   </head>
   <body>
@@ -222,6 +249,8 @@
     <div class="ui-layer title">触觉代词 · DUET</div>
     <div class="ui-layer state-label" id="stateLabel">独 · ALONE</div>
     <div class="conn-dot" id="connDot"></div>
+
+    <button class="exit-btn" id="exitBtn">离 · LEAVE</button>
 
     <div class="pair-overlay" id="pairOverlay">
       <div class="back-link" id="backLink" style="display: none">← 返 回</div>
@@ -256,7 +285,7 @@
 
     <script>
       // ═══════════════════════════════════════════════════════════
-      //  WebGL Setup
+      //  WebGL (unchanged from previous)
       // ═══════════════════════════════════════════════════════════
       const canvas = document.getElementById("c");
       const gl = canvas.getContext("webgl", {
@@ -411,7 +440,7 @@ void main() {
       for (let i = 0; i < 10; i++) uT.push(loc(`uTouches[${i}]`));
 
       // ═══════════════════════════════════════════════════════════
-      //  Touch State
+      //  State
       // ═══════════════════════════════════════════════════════════
       const localActive = new Map();
       const localFading = [];
@@ -420,6 +449,7 @@ void main() {
 
       const stateEl = document.getElementById("stateLabel");
       const connDot = document.getElementById("connDot");
+      const exitBtn = document.getElementById("exitBtn");
 
       let warmth = 0,
         target = 0,
@@ -428,13 +458,14 @@ void main() {
         mergeT = 0;
 
       // ═══════════════════════════════════════════════════════════
-      //  PeerJS Connection (hardened)
+      //  PeerJS Connection
       // ═══════════════════════════════════════════════════════════
       let peer = null;
       let conn = null;
       let isHost = false;
       let isConnected = false;
       let joinTimeout = null;
+      let hostTimeout = null;
 
       const overlay = document.getElementById("pairOverlay");
       const modeSelect = document.getElementById("modeSelect");
@@ -447,7 +478,22 @@ void main() {
       const btnConnect = document.getElementById("btnConnect");
       const backLink = document.getElementById("backLink");
 
-      const ROOM_PREFIX = "hpnn-"; // shorter, less collision-prone namespace
+      const ROOM_PREFIX = "hpnn-";
+
+      // Beefed-up ICE config: multiple STUN servers improve NAT traversal
+      // for tricky networks (phone cellular vs iPad wifi, etc.)
+      const PEER_CONFIG = {
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "stun:stun.cloudflare.com:3478" },
+            { urls: "stun:global.stun.twilio.com:3478" },
+          ],
+        },
+      };
 
       function genCode() {
         const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -463,19 +509,51 @@ void main() {
         if (cls) el.classList.add(cls);
       }
 
-      function resetToModeSelect() {
+      function teardownPeer() {
+        if (joinTimeout) {
+          clearTimeout(joinTimeout);
+          joinTimeout = null;
+        }
+        if (hostTimeout) {
+          clearTimeout(hostTimeout);
+          hostTimeout = null;
+        }
+        if (conn) {
+          try {
+            conn.close();
+          } catch (e) {}
+          conn = null;
+        }
         if (peer && !peer.destroyed) {
           try {
             peer.destroy();
           } catch (e) {}
         }
         peer = null;
-        conn = null;
         isConnected = false;
-        if (joinTimeout) {
-          clearTimeout(joinTimeout);
-          joinTimeout = null;
-        }
+        connDot.classList.remove("connected");
+        exitBtn.classList.remove("visible");
+        remoteActive.clear();
+        remoteFading.length = 0;
+      }
+
+      function resetToModeSelect() {
+        teardownPeer();
+        hostView.style.display = "none";
+        joinView.style.display = "none";
+        modeSelect.style.display = "flex";
+        backLink.style.display = "none";
+        btnConnect.disabled = false;
+        setHint(joinStatusEl, "\u00A0", null);
+        setHint(hostStatusEl, "准 备 中", null);
+        roomCodeEl.textContent = "····";
+        codeInput.value = "";
+      }
+
+      function showPairingAgain() {
+        // called when remote disconnects or local user hits exit
+        teardownPeer();
+        overlay.classList.remove("hidden");
         hostView.style.display = "none";
         joinView.style.display = "none";
         modeSelect.style.display = "flex";
@@ -519,6 +597,18 @@ void main() {
         if (e.key === "Enter") btnConnect.click();
       });
 
+      // Exit button — both sides can use this
+      exitBtn.addEventListener("click", () => {
+        // send a polite goodbye if possible
+        if (conn && isConnected) {
+          try {
+            conn.send({ type: "bye" });
+          } catch (e) {}
+        }
+        // small delay so the goodbye has a chance to flush
+        setTimeout(showPairingAgain, 120);
+      });
+
       // ─── HOST ───
       function startHost(retry = 0) {
         isHost = true;
@@ -527,22 +617,33 @@ void main() {
         roomCodeEl.textContent = code;
         setHint(hostStatusEl, "准 备 中", null);
 
-        peer = new Peer(peerId, { debug: 1 });
+        peer = new Peer(peerId, PEER_CONFIG);
 
-        peer.on("open", (id) => {
+        peer.on("open", () => {
           setHint(hostStatusEl, "等 待 接 入", null);
         });
 
         peer.on("connection", (c) => {
+          // Do NOT mark as connected yet — wait for the data channel to really open
           conn = c;
+          setHint(hostStatusEl, "正 在 建 立", null);
+
+          // If the channel doesn't actually open within 10s, tear down and wait again
+          hostTimeout = setTimeout(() => {
+            if (!isConnected) {
+              setHint(hostStatusEl, "通 道 未 建 立 · 请 朋 友 重 试", "error");
+              try {
+                c.close();
+              } catch (e) {}
+              conn = null;
+            }
+          }, 10000);
+
           setupConn();
-          setHint(hostStatusEl, "已 接 入", "success");
-          setTimeout(closeOverlay, 700);
         });
 
         peer.on("error", (err) => {
           console.error("host peer err", err.type, err);
-          // if ID is taken, try a fresh code
           if (err.type === "unavailable-id" && retry < 3) {
             try {
               peer.destroy();
@@ -575,11 +676,10 @@ void main() {
         btnConnect.disabled = true;
         setHint(joinStatusEl, "连 接 中", null);
 
-        peer = new Peer(null, { debug: 1 });
+        peer = new Peer(null, PEER_CONFIG);
         const targetId = ROOM_PREFIX + code;
 
         peer.on("open", (myId) => {
-          // small delay before connect — gives signaling server a moment
           setTimeout(() => {
             conn = peer.connect(targetId, {
               reliable: true,
@@ -594,10 +694,14 @@ void main() {
 
             setupConn();
 
-            // hard timeout — if conn.open doesn't fire within 8s, tell user
+            // 12 seconds — give ICE enough time on slow networks
             joinTimeout = setTimeout(() => {
               if (!isConnected) {
-                setHint(joinStatusEl, "对 方 未 响 应 · 检 查 代 号", "error");
+                setHint(
+                  joinStatusEl,
+                  "通 道 未 通 · 换 同 一 网 络 重 试",
+                  "error",
+                );
                 btnConnect.disabled = false;
                 try {
                   conn.close();
@@ -605,8 +709,10 @@ void main() {
                 try {
                   peer.destroy();
                 } catch (e) {}
+                conn = null;
+                peer = null;
               }
-            }, 8000);
+            }, 12000);
           }, 400);
         });
 
@@ -633,24 +739,47 @@ void main() {
 
       function setupConn() {
         conn.on("open", () => {
+          // THIS is the real moment of connection — for both host and joiner
           isConnected = true;
           connDot.classList.add("connected");
+          exitBtn.classList.add("visible");
+
           if (joinTimeout) {
             clearTimeout(joinTimeout);
             joinTimeout = null;
           }
-          if (!isHost) {
-            setHint(joinStatusEl, "已 连 接", "success");
-            setTimeout(closeOverlay, 700);
+          if (hostTimeout) {
+            clearTimeout(hostTimeout);
+            hostTimeout = null;
           }
+
+          if (isHost) {
+            setHint(hostStatusEl, "已 接 入", "success");
+          } else {
+            setHint(joinStatusEl, "已 连 接", "success");
+          }
+          setTimeout(closeOverlay, 700);
         });
 
-        conn.on("data", (msg) => handleRemoteMsg(msg));
+        conn.on("data", (msg) => {
+          if (msg && msg.type === "bye") {
+            // remote user pressed exit
+            showPairingAgain();
+            return;
+          }
+          handleRemoteMsg(msg);
+        });
 
         conn.on("close", () => {
-          isConnected = false;
-          connDot.classList.remove("connected");
-          remoteActive.clear();
+          if (isConnected) {
+            // remote went away unexpectedly
+            showPairingAgain();
+          } else {
+            isConnected = false;
+            connDot.classList.remove("connected");
+            exitBtn.classList.remove("visible");
+            remoteActive.clear();
+          }
         });
 
         conn.on("error", (err) => console.error("conn err", err));
