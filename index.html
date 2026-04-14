@@ -9,235 +9,238 @@
     <title>Haptic Pronoun — 双触</title>
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      html,
-      body {
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #f2efe9;
-        touch-action: none;
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
-        font-family: "Times New Roman", "Songti SC", "SimSun", serif;
-      }
-      canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
-        position: fixed;
-        top: 0;
-        left: 0;
-      }
-      .paper-grain {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 2;
-        mix-blend-mode: multiply;
-        opacity: 0.06;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        background-size: 256px 256px;
-      }
-      .ui-layer {
-        position: fixed;
-        z-index: 3;
-        pointer-events: none;
-        color: #1a1a1a;
-        opacity: 0.32;
-      }
-      .title {
-        top: 24px;
-        left: 24px;
-        font-size: 11px;
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-      }
-      .state-label {
-        top: 24px;
-        right: 24px;
-        font-size: 10px;
-        letter-spacing: 0.12em;
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-      }
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            html,
+            body {
+              width: 100%;
+              height: 100%;
+              overflow: hidden;
+              background: #f2efe9;
+              touch-action: none;
+              -webkit-touch-callout: none;
+              -webkit-user-select: none;
+              user-select: none;
+              font-family: "Times New Roman", "Songti SC", "SimSun", serif;
+            }
+            canvas {
+              display: block;
+              width: 100%;
+              height: 100%;
+              position: fixed;
+              top: 0;
+              left: 0;
+            }
+            .paper-grain {
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              pointer-events: none;
+              z-index: 2;
+              mix-blend-mode: multiply;
+              opacity: 0.06;
+              background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+              background-size: 256px 256px;
+            }
+            .ui-layer {
+              position: fixed;
+              z-index: 3;
+              pointer-events: none;
+              color: #1a1a1a;
+              opacity: 0.32;
+            }
+            .title {
+              top: 24px;
+              left: 24px;
+              font-size: 11px;
+              letter-spacing: 0.15em;
+              text-transform: uppercase;
+            }
+            .state-label {
+              top: 24px;
+              right: 24px;
+              font-size: 10px;
+              letter-spacing: 0.12em;
+              text-align: right;
+              font-variant-numeric: tabular-nums;
+            }
 
-      .pair-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 10;
-        background: #f2efe9;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        transition:
-          opacity 1.2s ease,
-          visibility 1.2s ease;
-        padding: 24px;
-      }
-      .pair-overlay.hidden {
-        opacity: 0;
-        visibility: hidden;
-        pointer-events: none;
-      }
-      .pair-title {
-        font-size: 13px;
-        letter-spacing: 0.25em;
-        text-transform: uppercase;
-        color: #1a1a1a;
-        opacity: 0.5;
-        margin-bottom: 48px;
-      }
-      .pair-mode {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 28px;
-        max-width: 320px;
-        width: 100%;
-      }
-      .pair-button {
-        background: none;
-        border: 1px solid rgba(26, 26, 26, 0.25);
-        color: #1a1a1a;
-        padding: 14px 28px;
-        font-family: inherit;
-        font-size: 11px;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        cursor: pointer;
-        transition: all 0.4s ease;
-        width: 100%;
-        pointer-events: auto;
-      }
-      .pair-button:hover,
-      .pair-button:active {
-        background: rgba(26, 26, 26, 0.05);
-        border-color: rgba(26, 26, 26, 0.5);
-      }
-      .pair-button:disabled {
-        opacity: 0.3;
-        pointer-events: none;
-      }
-      .room-code {
-        font-size: 42px;
-        letter-spacing: 0.3em;
-        color: #1a1a1a;
-        opacity: 0.85;
-        font-variant-numeric: tabular-nums;
-        padding: 16px 0;
-      }
-      .pair-hint {
-        font-size: 10px;
-        letter-spacing: 0.18em;
-        color: #1a1a1a;
-        opacity: 0.4;
-        text-align: center;
-        line-height: 1.8;
-        text-transform: uppercase;
-        min-height: 14px;
-        transition:
-          opacity 0.4s ease,
-          color 0.4s ease;
-      }
-      .pair-hint.error {
-        color: #8a3a2a;
-        opacity: 0.7;
-      }
-      .pair-hint.success {
-        color: #2a5a3a;
-        opacity: 0.7;
-      }
-      .code-input {
-        background: none;
-        border: none;
-        border-bottom: 1px solid rgba(26, 26, 26, 0.3);
-        color: #1a1a1a;
-        font-family: inherit;
-        font-size: 32px;
-        letter-spacing: 0.25em;
-        text-align: center;
-        width: 100%;
-        padding: 12px 0;
-        outline: none;
-        text-transform: uppercase;
-        pointer-events: auto;
-      }
-      .code-input:focus {
-        border-bottom-color: rgba(26, 26, 26, 0.7);
-      }
-      .divider {
-        font-size: 9px;
-        letter-spacing: 0.3em;
-        color: #1a1a1a;
-        opacity: 0.3;
-        margin: 8px 0;
-        text-transform: uppercase;
-      }
-      .conn-dot {
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #1a1a1a;
-        opacity: 0.2;
-        z-index: 3;
-        transition:
-          opacity 0.6s ease,
-          background 0.6s ease;
-      }
-      .conn-dot.connected {
-        opacity: 0.6;
-      }
-      .back-link {
-        position: absolute;
-        top: 24px;
-        left: 24px;
-        font-size: 9px;
-        letter-spacing: 0.2em;
-        color: #1a1a1a;
-        opacity: 0.4;
-        text-transform: uppercase;
-        cursor: pointer;
-        pointer-events: auto;
-        padding: 8px;
-      }
-      .exit-btn {
-        position: fixed;
-        bottom: 18px;
-        left: 24px;
-        z-index: 4;
-        font-family: inherit;
-        font-size: 10px;
-        letter-spacing: 0.2em;
-        color: #1a1a1a;
-        opacity: 0;
-        background: none;
-        border: none;
-        padding: 10px 14px 10px 0;
-        cursor: pointer;
-        text-transform: uppercase;
-        transition: opacity 0.8s ease;
-        pointer-events: none;
-      }
-      .exit-btn.visible {
-        opacity: 0.4;
-        pointer-events: auto;
-      }
-      .exit-btn:active {
-        opacity: 0.7;
-      }
+            .pair-overlay {
+              position: fixed;
+              inset: 0;
+              z-index: 10;
+              background: #f2efe9;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              transition:
+                opacity 1.2s ease,
+                visibility 1.2s ease;
+              padding: 24px;
+            }
+            .pair-overlay.hidden {
+              opacity: 0;
+              visibility: hidden;
+              pointer-events: none;
+            }
+            .pair-title {
+              font-size: 13px;
+              letter-spacing: 0.25em;
+              text-transform: uppercase;
+              color: #1a1a1a;
+              opacity: 0.5;
+              margin-bottom: 48px;
+            }
+            .pair-mode {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 28px;
+              max-width: 320px;
+              width: 100%;
+            }
+            .pair-button {
+              background: none;
+              border: 1px solid rgba(26, 26, 26, 0.25);
+              color: #1a1a1a;
+              padding: 14px 28px;
+              font-family: inherit;
+              font-size: 11px;
+              letter-spacing: 0.18em;
+              text-transform: uppercase;
+              cursor: pointer;
+              transition: all 0.4s ease;
+              width: 100%;
+              pointer-events: auto;
+            }
+            .pair-button:hover,
+            .pair-button:active {
+              background: rgba(26, 26, 26, 0.05);
+              border-color: rgba(26, 26, 26, 0.5);
+            }
+            .pair-button:disabled {
+              opacity: 0.3;
+              pointer-events: none;
+            }
+            .room-code {
+              font-size: 42px;
+              letter-spacing: 0.3em;
+              color: #1a1a1a;
+              opacity: 0.85;
+              font-variant-numeric: tabular-nums;
+              padding: 16px 0;
+            }
+            .pair-hint {
+              font-size: 10px;
+              letter-spacing: 0.18em;
+              color: #1a1a1a;
+              opacity: 0.4;
+              text-align: center;
+              line-height: 1.8;
+              text-transform: uppercase;
+              min-height: 14px;
+              transition:
+                opacity 0.4s ease,
+                color 0.4s ease;
+            }
+            .pair-hint.error {
+              color: #8a3a2a;
+              opacity: 0.7;
+            }
+            .pair-hint.success {
+              color: #2a5a3a;
+              opacity: 0.7;
+            }
+            .code-input {
+              background: none;
+              border: none;
+              border-bottom: 1px solid rgba(26, 26, 26, 0.3);
+              color: #1a1a1a;
+              font-family: inherit;
+              font-size: 32px;
+              letter-spacing: 0.25em;
+              text-align: center;
+              width: 100%;
+              padding: 12px 0;
+              outline: none;
+              text-transform: uppercase;
+              pointer-events: auto;
+            }
+            .code-input:focus {
+              border-bottom-color: rgba(26, 26, 26, 0.7);
+            }
+            .divider {
+              font-size: 9px;
+              letter-spacing: 0.3em;
+              color: #1a1a1a;
+              opacity: 0.3;
+              margin: 8px 0;
+              text-transform: uppercase;
+            }
+            .conn-dot {
+              position: fixed;
+              bottom: 24px;
+              right: 24px;
+              width: 6px;
+              height: 6px;
+              border-radius: 50%;
+              background: #1a1a1a;
+              opacity: 0.2;
+              z-index: 3;
+              transition:
+                opacity 0.6s ease,
+                background 0.6s ease;
+            }
+            .conn-dot.connected {
+              opacity: 0.6;
+            }
+            .back-link {
+              position: absolute;
+              top: 24px;
+              left: 24px;
+              font-size: 9px;
+              letter-spacing: 0.2em;
+              color: #1a1a1a;
+              opacity: 0.4;
+              text-transform: uppercase;
+              cursor: pointer;
+              pointer-events: auto;
+              padding: 8px;
+            }
+      <<<<<<< HEAD
+            .exit-btn {
+              position: fixed;
+              bottom: 18px;
+              left: 24px;
+              z-index: 4;
+              font-family: inherit;
+              font-size: 10px;
+              letter-spacing: 0.2em;
+              color: #1a1a1a;
+              opacity: 0;
+              background: none;
+              border: none;
+              padding: 10px 14px 10px 0;
+              cursor: pointer;
+              text-transform: uppercase;
+              transition: opacity 0.8s ease;
+              pointer-events: none;
+            }
+            .exit-btn.visible {
+              opacity: 0.4;
+              pointer-events: auto;
+            }
+            .exit-btn:active {
+              opacity: 0.7;
+            }
+      =======
+      >>>>>>> parent of 365cc58 (Update index.html)
     </style>
   </head>
   <body>
@@ -247,8 +250,6 @@
     <div class="ui-layer title">触觉代词 · DUET</div>
     <div class="ui-layer state-label" id="stateLabel">独 · ALONE</div>
     <div class="conn-dot" id="connDot"></div>
-
-    <button class="exit-btn" id="exitBtn">离 · LEAVE</button>
 
     <div class="pair-overlay" id="pairOverlay">
       <div class="back-link" id="backLink" style="display: none">← 返 回</div>
@@ -282,1157 +283,1214 @@
     </div>
 
     <script>
-      // ═══════════════════════════════════════════════════════════
-      //  WebGL Setup
-      // ═══════════════════════════════════════════════════════════
-      const canvas = document.getElementById("c");
-      const gl = canvas.getContext("webgl", {
-        alpha: false,
-        antialias: false,
-        premultipliedAlpha: false,
-        preserveDrawingBuffer: false,
-      });
-      gl.getExtension("OES_standard_derivatives");
-
-      const vertSrc = `
-attribute vec2 aPos;
-varying vec2 vUv;
-void main() {
-  vUv = aPos * 0.5 + 0.5;
-  gl_Position = vec4(aPos, 0.0, 1.0);
-}`;
-
-      const MAX_SLOTS = 24;
-
-      const fragSrc = `
-#extension GL_OES_standard_derivatives : enable
-precision highp float;
-
-varying vec2 vUv;
-uniform vec2 uResolution;
-uniform float uTime;
-uniform int uCount;
-uniform vec4 uTouchesA[${MAX_SLOTS}];
-uniform vec4 uTouchesB[${MAX_SLOTS}];
-uniform float uWarmth;
-
-const vec3 PAPER = vec3(0.949, 0.937, 0.914);
-const vec3 INK   = vec3(0.055, 0.047, 0.043);
-const vec3 INK_REMOTE = vec3(0.060, 0.058, 0.068);
-
-const vec3 W0 = vec3(0.26, 0.11, 0.07);
-const vec3 W1 = vec3(0.72, 0.34, 0.14);
-const vec3 W2 = vec3(0.94, 0.74, 0.36);
-
-const vec3 C0 = vec3(0.08, 0.10, 0.20);
-const vec3 C1 = vec3(0.22, 0.36, 0.54);
-const vec3 C2 = vec3(0.58, 0.72, 0.82);
-
-const vec3 MID_EDGE = vec3(0.18, 0.15, 0.19);
-const vec3 MID_MID  = vec3(0.40, 0.36, 0.42);
-const vec3 MID_CORE = vec3(0.72, 0.66, 0.70);
-
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-float noise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  f = f*f*(3.0-2.0*f);
-  return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
-             mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
-}
-float fbm(vec2 p) {
-  float v=0.0, a=0.5;
-  for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.0+100.0;a*=0.5;}
-  return v;
-}
-
-vec3 mapInk(float depth, float w, float remoteRatio) {
-  vec3 warmG = mix(W0, W1, smoothstep(0.0, 0.45, depth));
-  warmG = mix(warmG, W2, smoothstep(0.35, 1.0, depth));
-
-  vec3 coolG = mix(C0, C1, smoothstep(0.0, 0.45, depth));
-  coolG = mix(coolG, C2, smoothstep(0.35, 1.0, depth));
-
-  vec3 midG = mix(MID_EDGE, MID_MID, smoothstep(0.0, 0.45, depth));
-  midG = mix(midG, MID_CORE, smoothstep(0.35, 1.0, depth));
-
-  vec3 colored;
-  if (w >= 0.0) {
-    colored = mix(midG, warmG, w);
-  } else {
-    colored = mix(midG, coolG, -w);
-  }
-
-  float absW = abs(w);
-  vec3 baseInk = mix(INK, INK_REMOTE, remoteRatio);
-  return mix(baseInk, colored, smoothstep(0.0, 0.3, absW));
-}
-
-void main() {
-  vec2 uv = vUv;
-  vec2 asp = vec2(uResolution.x/uResolution.y, 1.0);
-  vec2 pos = uv * asp;
-
-  float fieldLocal = 0.0;
-  float fieldRemote = 0.0;
-  float virtueAccum = 0.0;
-  float totalWeight = 0.0;
-
-  for(int i=0;i<${MAX_SLOTS};i++){
-    if(i>=uCount) break;
-
-    vec4 A = uTouchesA[i];
-    vec4 B = uTouchesB[i];
-
-    vec2 tp = A.xy * asp;
-    float r = A.z;
-    float kind = A.w;
-    vec2 vel = B.xy;
-    float virtue = B.z;
-    float dwell = B.w;
-
-    vec2 delta = pos - tp;
-
-    float speed = length(vel);
-    float stretchAmt = clamp(speed * 3.0, 0.0, 0.55);
-    if (speed > 0.0001) {
-      vec2 vdir = vel / speed;
-      vec2 perp = vec2(-vdir.y, vdir.x);
-      float along = dot(delta, vdir);
-      float across = dot(delta, perp);
-      along /= (1.0 + stretchAmt);
-      delta = vdir * along + perp * across;
-    }
-
-    float d = length(delta);
-
-    float sigMul = mix(1.4, 1.7, kind);
-    float dwellBoost = 1.0 + smoothstep(0.0, 2.5, dwell) * 0.35;
-    float sig = r * sigMul * dwellBoost;
-    float g = exp(-d*d/(2.0*sig*sig));
-
-    float virtueWeight = mix(1.0, 0.55, virtue);
-    g *= virtueWeight;
-
-    if (kind < 0.5) fieldLocal += g;
-    else fieldRemote += g * 0.78;
-
-    virtueAccum += g * virtue;
-    totalWeight += g;
-  }
-
-  float field = fieldLocal + fieldRemote;
-  float remoteRatio = field > 0.001 ? clamp(fieldRemote / field, 0.0, 1.0) : 0.0;
-  float avgVirtue = totalWeight > 0.001 ? clamp(virtueAccum / totalWeight, 0.0, 1.0) : 0.0;
-
-  float t = uTime * 0.15;
-  float n = fbm(pos*3.0 + vec2(t*0.3, t*0.2)) * 0.12;
-  float extraDistort = remoteRatio * fbm(pos*5.0 + uTime*0.08) * 0.06;
-  float virtueDistort = avgVirtue * fbm(pos*4.0 + uTime*0.12) * 0.05;
-  float df = field + n * field * 2.0 + extraDistort + virtueDistort;
-
-  float shadow = smoothstep(0.0, 0.05, df) * (1.0 - exp(-df*3.0));
-  float core   = 1.0 - exp(-df*6.0);
-  float halo   = smoothstep(0.0, 0.02, df) * 0.15;
-  shadow *= sin(uTime*1.5)*0.03 + 1.0;
-
-  float ink = clamp(shadow*0.55 + core*0.35 + halo, 0.0, 1.0);
-
-  float edgeReal = smoothstep(0.0, 0.15, df);
-  float edgeVirtual = smoothstep(0.0, 0.30, df);
-  float edge = mix(edgeReal, edgeVirtual, avgVirtue);
-  ink = mix(ink*0.55, ink, edge);
-
-  ink *= mix(1.0, 0.88, remoteRatio);
-
-  float mp = smoothstep(0.9, 1.1, df);
-  ink = clamp(ink + sin(uTime*4.0)*0.04*mp, 0.0, 1.0);
-
-  float depth = clamp(df / 1.5, 0.0, 1.0);
-  vec3 ic = mapInk(depth, uWarmth, remoteRatio);
-
-  float grain = fbm(uv*80.0 + uTime*0.01) * 0.03;
-  vec3 col = mix(PAPER + grain, ic, ink);
-
-  float vig = 1.0 - dot((uv-0.5)*1.1, (uv-0.5)*1.1);
-  col *= 0.92 + 0.08*vig;
-
-  gl_FragColor = vec4(col, 1.0);
-}`;
-
-      function makeShader(type, src) {
-        const s = gl.createShader(type);
-        gl.shaderSource(s, src);
-        gl.compileShader(s);
-        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
-          console.error(gl.getShaderInfoLog(s));
-        return s;
-      }
-      const prog = gl.createProgram();
-      gl.attachShader(prog, makeShader(gl.VERTEX_SHADER, vertSrc));
-      gl.attachShader(prog, makeShader(gl.FRAGMENT_SHADER, fragSrc));
-      gl.linkProgram(prog);
-      gl.useProgram(prog);
-
-      const buf = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      gl.bufferData(
-        gl.ARRAY_BUFFER,
-        new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
-        gl.STATIC_DRAW,
-      );
-      const aP = gl.getAttribLocation(prog, "aPos");
-      gl.enableVertexAttribArray(aP);
-      gl.vertexAttribPointer(aP, 2, gl.FLOAT, false, 0, 0);
-
-      const loc = (n) => gl.getUniformLocation(prog, n);
-      const uRes = loc("uResolution"),
-        uTm = loc("uTime"),
-        uCnt = loc("uCount"),
-        uW = loc("uWarmth");
-      const uTA = [],
-        uTB = [];
-      for (let i = 0; i < MAX_SLOTS; i++) {
-        uTA.push(loc(`uTouchesA[${i}]`));
-        uTB.push(loc(`uTouchesB[${i}]`));
-      }
-
-      // ═══════════════════════════════════════════════════════════
-      //  Touch state
-      // ═══════════════════════════════════════════════════════════
-      const localActive = new Map();
-      const localFading = [];
-      const localTrails = [];
-
-      const remoteActive = new Map();
-      const remoteFading = [];
-      const remoteTrails = [];
-
-      const stateEl = document.getElementById("stateLabel");
-      const connDot = document.getElementById("connDot");
-      const exitBtn = document.getElementById("exitBtn");
-
-      let warmth = 0,
-        target = 0,
-        merged = false,
-        wasMerged = false,
-        mergeT = 0;
-
-      const TRAIL_LIFETIME = 0.55;
-      const TRAIL_EMIT_INTERVAL = 0.018;
-      const BASE_MIN_RADIUS = 0.009;
-
-      // ═══════════════════════════════════════════════════════════
-      //  PeerJS Connection — now with TURN fallback
-      // ═══════════════════════════════════════════════════════════
-      let peer = null;
-      let conn = null;
-      let isHost = false;
-      let isConnected = false;
-      let joinTimeout = null;
-      let hostTimeout = null;
-      let iceMonitorInterval = null;
-
-      const overlay = document.getElementById("pairOverlay");
-      const modeSelect = document.getElementById("modeSelect");
-      const hostView = document.getElementById("hostView");
-      const joinView = document.getElementById("joinView");
-      const roomCodeEl = document.getElementById("roomCode");
-      const hostStatusEl = document.getElementById("hostStatus");
-      const joinStatusEl = document.getElementById("joinStatus");
-      const codeInput = document.getElementById("codeInput");
-      const btnConnect = document.getElementById("btnConnect");
-      const backLink = document.getElementById("backLink");
-
-      const ROOM_PREFIX = "hpnn-";
-
-      // ─── ICE servers: STUN + free public TURN (Open Relay Project) ───
-      // Open Relay Project provides free TURN for open-source / non-commercial use.
-      // Without TURN, two devices behind strict NATs cannot connect at all.
-      // With TURN, the data is relayed through a public server (slightly higher
-      // latency but virtually guarantees a connection).
-      const PEER_CONFIG = {
-        debug: 1,
-        config: {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun.cloudflare.com:3478" },
-            // Open Relay Project — free public TURN
-            {
-              urls: "turn:openrelay.metered.ca:80",
-              username: "openrelayproject",
-              credential: "openrelayproject",
-            },
-            {
-              urls: "turn:openrelay.metered.ca:443",
-              username: "openrelayproject",
-              credential: "openrelayproject",
-            },
-            {
-              urls: "turn:openrelay.metered.ca:443?transport=tcp",
-              username: "openrelayproject",
-              credential: "openrelayproject",
-            },
-          ],
-          iceCandidatePoolSize: 10,
-        },
-      };
-
-      function genCode() {
-        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        let s = "";
-        for (let i = 0; i < 4; i++)
-          s += chars[Math.floor(Math.random() * chars.length)];
-        return s;
-      }
-
-      function setHint(el, text, cls) {
-        el.textContent = text;
-        el.classList.remove("error", "success");
-        if (cls) el.classList.add(cls);
-      }
-
-      function teardownPeer() {
-        if (joinTimeout) {
-          clearTimeout(joinTimeout);
-          joinTimeout = null;
-        }
-        if (hostTimeout) {
-          clearTimeout(hostTimeout);
-          hostTimeout = null;
-        }
-        if (iceMonitorInterval) {
-          clearInterval(iceMonitorInterval);
-          iceMonitorInterval = null;
-        }
-        if (conn) {
-          try {
-            conn.close();
-          } catch (e) {}
-          conn = null;
-        }
-        if (peer && !peer.destroyed) {
-          try {
-            peer.destroy();
-          } catch (e) {}
-        }
-        peer = null;
-        isConnected = false;
-        connDot.classList.remove("connected");
-        exitBtn.classList.remove("visible");
-        remoteActive.clear();
-        remoteFading.length = 0;
-        remoteTrails.length = 0;
-      }
-
-      function resetToModeSelect() {
-        teardownPeer();
-        hostView.style.display = "none";
-        joinView.style.display = "none";
-        modeSelect.style.display = "flex";
-        backLink.style.display = "none";
-        btnConnect.disabled = false;
-        setHint(joinStatusEl, "\u00A0", null);
-        setHint(hostStatusEl, "准 备 中", null);
-        roomCodeEl.textContent = "····";
-        codeInput.value = "";
-      }
-
-      function showPairingAgain() {
-        teardownPeer();
-        overlay.classList.remove("hidden");
-        hostView.style.display = "none";
-        joinView.style.display = "none";
-        modeSelect.style.display = "flex";
-        backLink.style.display = "none";
-        btnConnect.disabled = false;
-        setHint(joinStatusEl, "\u00A0", null);
-        setHint(hostStatusEl, "准 备 中", null);
-        roomCodeEl.textContent = "····";
-        codeInput.value = "";
-      }
-
-      backLink.addEventListener("click", resetToModeSelect);
-
-      document.getElementById("btnHost").addEventListener("click", () => {
-        modeSelect.style.display = "none";
-        hostView.style.display = "flex";
-        backLink.style.display = "block";
-        startHost();
-      });
-
-      document.getElementById("btnJoin").addEventListener("click", () => {
-        modeSelect.style.display = "none";
-        joinView.style.display = "flex";
-        backLink.style.display = "block";
-        setTimeout(() => codeInput.focus(), 100);
-      });
-
-      btnConnect.addEventListener("click", () => {
-        const code = codeInput.value.trim().toUpperCase();
-        if (code.length !== 4) {
-          setHint(joinStatusEl, "代 号 应 为 四 位", "error");
-          return;
-        }
-        startJoin(code);
-      });
-
-      codeInput.addEventListener("input", (e) => {
-        e.target.value = e.target.value.toUpperCase();
-      });
-      codeInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") btnConnect.click();
-      });
-
-      exitBtn.addEventListener("click", () => {
-        if (conn && isConnected) {
-          try {
-            conn.send({ type: "bye" });
-          } catch (e) {}
-        }
-        setTimeout(showPairingAgain, 120);
-      });
-
-      // ─── ICE state monitor ───
-      // Polls the underlying RTCPeerConnection's iceConnectionState every 500ms
-      // and updates the UI hint, so user can see what's happening during handshake.
-      function startIceMonitor(statusEl) {
-        if (iceMonitorInterval) clearInterval(iceMonitorInterval);
-        iceMonitorInterval = setInterval(() => {
-          if (!conn || !conn.peerConnection) return;
-          const pc = conn.peerConnection;
-          const state = pc.iceConnectionState;
-          if (isConnected) {
-            clearInterval(iceMonitorInterval);
-            iceMonitorInterval = null;
-            return;
-          }
-          if (state === "new" || state === "checking") {
-            setHint(statusEl, "协 商 中 · " + state.toUpperCase(), null);
-          } else if (state === "connected" || state === "completed") {
-            setHint(statusEl, "通 道 已 通", "success");
-          } else if (state === "failed") {
-            setHint(statusEl, "ICE 失 败 · 网 络 不 通", "error");
-          } else if (state === "disconnected") {
-            setHint(statusEl, "信 号 不 稳", "error");
-          }
-        }, 500);
-      }
-
-      function startHost(retry = 0) {
-        isHost = true;
-        const code = genCode();
-        const peerId = ROOM_PREFIX + code;
-        roomCodeEl.textContent = code;
-        setHint(hostStatusEl, "准 备 中", null);
-
-        peer = new Peer(peerId, PEER_CONFIG);
-
-        peer.on("open", () => {
-          setHint(hostStatusEl, "等 待 接 入", null);
-        });
-
-        peer.on("connection", (c) => {
-          conn = c;
-          setHint(hostStatusEl, "正 在 建 立", null);
-          startIceMonitor(hostStatusEl);
-
-          // 20 second timeout — TURN can take a while on slow networks
-          hostTimeout = setTimeout(() => {
-            if (!isConnected) {
-              setHint(hostStatusEl, "通 道 未 建 立 · 请 朋 友 重 试", "error");
-              try {
-                c.close();
-              } catch (e) {}
-              conn = null;
-            }
-          }, 20000);
-
-          setupConn();
-        });
-
-        peer.on("error", (err) => {
-          console.error("host peer err", err.type, err);
-          if (err.type === "unavailable-id" && retry < 3) {
-            try {
-              peer.destroy();
-            } catch (e) {}
-            setTimeout(() => startHost(retry + 1), 300);
-            return;
-          }
-          if (
-            err.type === "network" ||
-            err.type === "server-error" ||
-            err.type === "socket-error"
-          ) {
-            setHint(hostStatusEl, "服 务 不 通 · 刷 新 重 试", "error");
-          } else {
-            setHint(hostStatusEl, "出 错 · " + err.type, "error");
-          }
-        });
-
-        peer.on("disconnected", () => {
-          setHint(hostStatusEl, "信 号 中 断 · 重 连 中", "error");
-          try {
-            peer.reconnect();
-          } catch (e) {}
-        });
-      }
-
-      function startJoin(code) {
-        isHost = false;
-        btnConnect.disabled = true;
-        setHint(joinStatusEl, "连 接 中", null);
-
-        peer = new Peer(null, PEER_CONFIG);
-        const targetId = ROOM_PREFIX + code;
-
-        peer.on("open", (myId) => {
-          setTimeout(() => {
-            conn = peer.connect(targetId, {
-              reliable: true,
-              serialization: "json",
+            // ═══════════════════════════════════════════════════════════
+            //  WebGL Setup
+            // ═══════════════════════════════════════════════════════════
+            const canvas = document.getElementById("c");
+            const gl = canvas.getContext("webgl", {
+              alpha: false,
+              antialias: false,
+              premultipliedAlpha: false,
+              preserveDrawingBuffer: false,
             });
+            gl.getExtension("OES_standard_derivatives");
 
-            if (!conn) {
-              setHint(joinStatusEl, "无 法 发 起 · 重 试", "error");
-              btnConnect.disabled = false;
-              return;
+            const vertSrc = `
+      attribute vec2 aPos;
+      varying vec2 vUv;
+      void main() {
+        vUv = aPos * 0.5 + 0.5;
+        gl_Position = vec4(aPos, 0.0, 1.0);
+      }`;
+
+            const MAX_SLOTS = 24;
+
+            const fragSrc = `
+      #extension GL_OES_standard_derivatives : enable
+      precision highp float;
+
+      varying vec2 vUv;
+      uniform vec2 uResolution;
+      uniform float uTime;
+      uniform int uCount;
+      uniform vec4 uTouchesA[${MAX_SLOTS}];
+      uniform vec4 uTouchesB[${MAX_SLOTS}];
+      uniform float uWarmth;
+
+      const vec3 PAPER = vec3(0.949, 0.937, 0.914);
+      const vec3 INK   = vec3(0.055, 0.047, 0.043);
+      const vec3 INK_REMOTE = vec3(0.060, 0.058, 0.068);
+
+      const vec3 W0 = vec3(0.26, 0.11, 0.07);
+      const vec3 W1 = vec3(0.72, 0.34, 0.14);
+      const vec3 W2 = vec3(0.94, 0.74, 0.36);
+
+      const vec3 C0 = vec3(0.08, 0.10, 0.20);
+      const vec3 C1 = vec3(0.22, 0.36, 0.54);
+      const vec3 C2 = vec3(0.58, 0.72, 0.82);
+
+      const vec3 MID_EDGE = vec3(0.18, 0.15, 0.19);
+      const vec3 MID_MID  = vec3(0.40, 0.36, 0.42);
+      const vec3 MID_CORE = vec3(0.72, 0.66, 0.70);
+
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        f = f*f*(3.0-2.0*f);
+        return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+                   mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+      }
+      float fbm(vec2 p) {
+        float v=0.0, a=0.5;
+        for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.0+100.0;a*=0.5;}
+        return v;
+      }
+
+      vec3 mapInk(float depth, float w, float remoteRatio) {
+        vec3 warmG = mix(W0, W1, smoothstep(0.0, 0.45, depth));
+        warmG = mix(warmG, W2, smoothstep(0.35, 1.0, depth));
+
+        vec3 coolG = mix(C0, C1, smoothstep(0.0, 0.45, depth));
+        coolG = mix(coolG, C2, smoothstep(0.35, 1.0, depth));
+
+        vec3 midG = mix(MID_EDGE, MID_MID, smoothstep(0.0, 0.45, depth));
+        midG = mix(midG, MID_CORE, smoothstep(0.35, 1.0, depth));
+
+        vec3 colored;
+        if (w >= 0.0) {
+          colored = mix(midG, warmG, w);
+        } else {
+          colored = mix(midG, coolG, -w);
+        }
+
+        float absW = abs(w);
+        vec3 baseInk = mix(INK, INK_REMOTE, remoteRatio);
+        return mix(baseInk, colored, smoothstep(0.0, 0.3, absW));
+      }
+
+      void main() {
+        vec2 uv = vUv;
+        vec2 asp = vec2(uResolution.x/uResolution.y, 1.0);
+        vec2 pos = uv * asp;
+
+        float fieldLocal = 0.0;
+        float fieldRemote = 0.0;
+        float virtueAccum = 0.0;
+        float totalWeight = 0.0;
+
+        for(int i=0;i<${MAX_SLOTS};i++){
+          if(i>=uCount) break;
+
+          vec4 A = uTouchesA[i];
+          vec4 B = uTouchesB[i];
+
+          vec2 tp = A.xy * asp;
+          float r = A.z;
+          float kind = A.w;
+          vec2 vel = B.xy;
+          float virtue = B.z;
+          float dwell = B.w;
+
+          vec2 delta = pos - tp;
+
+          float speed = length(vel);
+          float stretchAmt = clamp(speed * 3.0, 0.0, 0.55);
+          if (speed > 0.0001) {
+            vec2 vdir = vel / speed;
+            vec2 perp = vec2(-vdir.y, vdir.x);
+            float along = dot(delta, vdir);
+            float across = dot(delta, perp);
+            along /= (1.0 + stretchAmt);
+            delta = vdir * along + perp * across;
+          }
+
+          float d = length(delta);
+
+          float sigMul = mix(1.4, 1.7, kind);
+          float dwellBoost = 1.0 + smoothstep(0.0, 2.5, dwell) * 0.35;
+          float sig = r * sigMul * dwellBoost;
+          float g = exp(-d*d/(2.0*sig*sig));
+
+          float virtueWeight = mix(1.0, 0.55, virtue);
+          g *= virtueWeight;
+
+          if (kind < 0.5) fieldLocal += g;
+          else fieldRemote += g * 0.78;
+
+          virtueAccum += g * virtue;
+          totalWeight += g;
+        }
+
+        float field = fieldLocal + fieldRemote;
+        float remoteRatio = field > 0.001 ? clamp(fieldRemote / field, 0.0, 1.0) : 0.0;
+        float avgVirtue = totalWeight > 0.001 ? clamp(virtueAccum / totalWeight, 0.0, 1.0) : 0.0;
+
+        float t = uTime * 0.15;
+        float n = fbm(pos*3.0 + vec2(t*0.3, t*0.2)) * 0.12;
+        float extraDistort = remoteRatio * fbm(pos*5.0 + uTime*0.08) * 0.06;
+        float virtueDistort = avgVirtue * fbm(pos*4.0 + uTime*0.12) * 0.05;
+        float df = field + n * field * 2.0 + extraDistort + virtueDistort;
+
+        float shadow = smoothstep(0.0, 0.05, df) * (1.0 - exp(-df*3.0));
+        float core   = 1.0 - exp(-df*6.0);
+        float halo   = smoothstep(0.0, 0.02, df) * 0.15;
+        shadow *= sin(uTime*1.5)*0.03 + 1.0;
+
+        float ink = clamp(shadow*0.55 + core*0.35 + halo, 0.0, 1.0);
+
+        float edgeReal = smoothstep(0.0, 0.15, df);
+        float edgeVirtual = smoothstep(0.0, 0.30, df);
+        float edge = mix(edgeReal, edgeVirtual, avgVirtue);
+        ink = mix(ink*0.55, ink, edge);
+
+        ink *= mix(1.0, 0.88, remoteRatio);
+
+        float mp = smoothstep(0.9, 1.1, df);
+        ink = clamp(ink + sin(uTime*4.0)*0.04*mp, 0.0, 1.0);
+
+        float depth = clamp(df / 1.5, 0.0, 1.0);
+        vec3 ic = mapInk(depth, uWarmth, remoteRatio);
+
+        float grain = fbm(uv*80.0 + uTime*0.01) * 0.03;
+        vec3 col = mix(PAPER + grain, ic, ink);
+
+        float vig = 1.0 - dot((uv-0.5)*1.1, (uv-0.5)*1.1);
+        col *= 0.92 + 0.08*vig;
+
+        gl_FragColor = vec4(col, 1.0);
+      }`;
+
+            function makeShader(type, src) {
+              const s = gl.createShader(type);
+              gl.shaderSource(s, src);
+              gl.compileShader(s);
+              if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+                console.error(gl.getShaderInfoLog(s));
+              return s;
+            }
+            const prog = gl.createProgram();
+            gl.attachShader(prog, makeShader(gl.VERTEX_SHADER, vertSrc));
+            gl.attachShader(prog, makeShader(gl.FRAGMENT_SHADER, fragSrc));
+            gl.linkProgram(prog);
+            gl.useProgram(prog);
+
+            const buf = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+            gl.bufferData(
+              gl.ARRAY_BUFFER,
+              new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+              gl.STATIC_DRAW,
+            );
+            const aP = gl.getAttribLocation(prog, "aPos");
+            gl.enableVertexAttribArray(aP);
+            gl.vertexAttribPointer(aP, 2, gl.FLOAT, false, 0, 0);
+
+            const loc = (n) => gl.getUniformLocation(prog, n);
+            const uRes = loc("uResolution"),
+              uTm = loc("uTime"),
+              uCnt = loc("uCount"),
+              uW = loc("uWarmth");
+            const uTA = [],
+              uTB = [];
+            for (let i = 0; i < MAX_SLOTS; i++) {
+              uTA.push(loc(`uTouchesA[${i}]`));
+              uTB.push(loc(`uTouchesB[${i}]`));
             }
 
-            setupConn();
-            startIceMonitor(joinStatusEl);
+            // ═══════════════════════════════════════════════════════════
+      <<<<<<< HEAD
+            //  Touch state
+      =======
+            //  Touch State
+      >>>>>>> parent of 365cc58 (Update index.html)
+            // ═══════════════════════════════════════════════════════════
+            const localActive = new Map();
+            const localFading = [];
+            const localTrails = [];
 
-            // 20 second timeout
-            joinTimeout = setTimeout(() => {
-              if (!isConnected) {
-                setHint(joinStatusEl, "通 道 未 通 · 网 络 受 限", "error");
-                btnConnect.disabled = false;
+            const remoteActive = new Map();
+            const remoteFading = [];
+            const remoteTrails = [];
+
+            const stateEl = document.getElementById("stateLabel");
+            const connDot = document.getElementById("connDot");
+
+            let warmth = 0,
+              target = 0,
+              merged = false,
+              wasMerged = false,
+              mergeT = 0;
+
+            const TRAIL_LIFETIME = 0.55;
+            const TRAIL_EMIT_INTERVAL = 0.018;
+            const BASE_MIN_RADIUS = 0.009;
+
+            // ═══════════════════════════════════════════════════════════
+      <<<<<<< HEAD
+            //  PeerJS Connection — now with TURN fallback
+      =======
+            //  PeerJS Connection (hardened)
+      >>>>>>> parent of 365cc58 (Update index.html)
+            // ═══════════════════════════════════════════════════════════
+            let peer = null;
+            let conn = null;
+            let isHost = false;
+            let isConnected = false;
+            let joinTimeout = null;
+      <<<<<<< HEAD
+            let hostTimeout = null;
+            let iceMonitorInterval = null;
+      =======
+      >>>>>>> parent of 365cc58 (Update index.html)
+
+            const overlay = document.getElementById("pairOverlay");
+            const modeSelect = document.getElementById("modeSelect");
+            const hostView = document.getElementById("hostView");
+            const joinView = document.getElementById("joinView");
+            const roomCodeEl = document.getElementById("roomCode");
+            const hostStatusEl = document.getElementById("hostStatus");
+            const joinStatusEl = document.getElementById("joinStatus");
+            const codeInput = document.getElementById("codeInput");
+            const btnConnect = document.getElementById("btnConnect");
+            const backLink = document.getElementById("backLink");
+
+      <<<<<<< HEAD
+            const ROOM_PREFIX = "hpnn-";
+
+            // ─── ICE servers: STUN + free public TURN (Open Relay Project) ───
+            // Open Relay Project provides free TURN for open-source / non-commercial use.
+            // Without TURN, two devices behind strict NATs cannot connect at all.
+            // With TURN, the data is relayed through a public server (slightly higher
+            // latency but virtually guarantees a connection).
+            const PEER_CONFIG = {
+              debug: 1,
+              config: {
+                iceServers: [
+                  { urls: "stun:stun.l.google.com:19302" },
+                  { urls: "stun:stun1.l.google.com:19302" },
+                  { urls: "stun:stun.cloudflare.com:3478" },
+                  // Open Relay Project — free public TURN
+                  {
+                    urls: "turn:openrelay.metered.ca:80",
+                    username: "openrelayproject",
+                    credential: "openrelayproject",
+                  },
+                  {
+                    urls: "turn:openrelay.metered.ca:443",
+                    username: "openrelayproject",
+                    credential: "openrelayproject",
+                  },
+                  {
+                    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                    username: "openrelayproject",
+                    credential: "openrelayproject",
+                  },
+                ],
+                iceCandidatePoolSize: 10,
+              },
+            };
+      =======
+            const ROOM_PREFIX = "hpnn-"; // shorter, less collision-prone namespace
+      >>>>>>> parent of 365cc58 (Update index.html)
+
+            function genCode() {
+              const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+              let s = "";
+              for (let i = 0; i < 4; i++)
+                s += chars[Math.floor(Math.random() * chars.length)];
+              return s;
+            }
+
+            function setHint(el, text, cls) {
+              el.textContent = text;
+              el.classList.remove("error", "success");
+              if (cls) el.classList.add(cls);
+            }
+
+      <<<<<<< HEAD
+            function teardownPeer() {
+              if (joinTimeout) {
+                clearTimeout(joinTimeout);
+                joinTimeout = null;
+              }
+              if (hostTimeout) {
+                clearTimeout(hostTimeout);
+                hostTimeout = null;
+              }
+              if (iceMonitorInterval) {
+                clearInterval(iceMonitorInterval);
+                iceMonitorInterval = null;
+              }
+              if (conn) {
                 try {
                   conn.close();
                 } catch (e) {}
+                conn = null;
+              }
+      =======
+            function resetToModeSelect() {
+      >>>>>>> parent of 365cc58 (Update index.html)
+              if (peer && !peer.destroyed) {
                 try {
                   peer.destroy();
                 } catch (e) {}
-                conn = null;
-                peer = null;
               }
-            }, 20000);
-          }, 400);
-        });
+              peer = null;
+              conn = null;
+              isConnected = false;
+      <<<<<<< HEAD
+              connDot.classList.remove("connected");
+              exitBtn.classList.remove("visible");
+              remoteActive.clear();
+              remoteFading.length = 0;
+              remoteTrails.length = 0;
+            }
 
-        peer.on("error", (err) => {
-          console.error("join peer err", err.type, err);
-          if (joinTimeout) {
-            clearTimeout(joinTimeout);
-            joinTimeout = null;
-          }
-          btnConnect.disabled = false;
-          if (err.type === "peer-unavailable") {
-            setHint(joinStatusEl, "代 号 不 存 在 · 重 试", "error");
-          } else if (
-            err.type === "network" ||
-            err.type === "server-error" ||
-            err.type === "socket-error"
-          ) {
-            setHint(joinStatusEl, "服 务 不 通 · 刷 新 重 试", "error");
-          } else {
-            setHint(joinStatusEl, "出 错 · " + err.type, "error");
-          }
-        });
-      }
+            function resetToModeSelect() {
+              teardownPeer();
+              hostView.style.display = "none";
+              joinView.style.display = "none";
+              modeSelect.style.display = "flex";
+              backLink.style.display = "none";
+              btnConnect.disabled = false;
+              setHint(joinStatusEl, "\u00A0", null);
+              setHint(hostStatusEl, "准 备 中", null);
+              roomCodeEl.textContent = "····";
+              codeInput.value = "";
+            }
 
-      function setupConn() {
-        conn.on("open", () => {
-          isConnected = true;
-          connDot.classList.add("connected");
-          exitBtn.classList.add("visible");
+            function showPairingAgain() {
+              teardownPeer();
+              overlay.classList.remove("hidden");
+      =======
+              if (joinTimeout) {
+                clearTimeout(joinTimeout);
+                joinTimeout = null;
+              }
+      >>>>>>> parent of 365cc58 (Update index.html)
+              hostView.style.display = "none";
+              joinView.style.display = "none";
+              modeSelect.style.display = "flex";
+              backLink.style.display = "none";
+              btnConnect.disabled = false;
+              setHint(joinStatusEl, "\u00A0", null);
+              setHint(hostStatusEl, "准 备 中", null);
+              roomCodeEl.textContent = "····";
+              codeInput.value = "";
+            }
 
-          if (joinTimeout) {
-            clearTimeout(joinTimeout);
-            joinTimeout = null;
-          }
-          if (hostTimeout) {
-            clearTimeout(hostTimeout);
-            hostTimeout = null;
-          }
-          if (iceMonitorInterval) {
-            clearInterval(iceMonitorInterval);
-            iceMonitorInterval = null;
-          }
+            backLink.addEventListener("click", resetToModeSelect);
 
-          if (isHost) {
-            setHint(hostStatusEl, "已 接 入", "success");
-          } else {
-            setHint(joinStatusEl, "已 连 接", "success");
-          }
-          setTimeout(closeOverlay, 700);
-        });
-
-        conn.on("data", (msg) => {
-          if (msg && msg.type === "bye") {
-            showPairingAgain();
-            return;
-          }
-          handleRemoteMsg(msg);
-        });
-
-        conn.on("close", () => {
-          if (isConnected) {
-            showPairingAgain();
-          } else {
-            isConnected = false;
-            connDot.classList.remove("connected");
-            exitBtn.classList.remove("visible");
-            remoteActive.clear();
-          }
-        });
-
-        conn.on("error", (err) => console.error("conn err", err));
-      }
-
-      function closeOverlay() {
-        overlay.classList.add("hidden");
-      }
-
-      function sendMsg(msg) {
-        if (conn && isConnected) {
-          try {
-            conn.send(msg);
-          } catch (e) {}
-        }
-      }
-
-      function handleRemoteMsg(msg) {
-        if (!msg || !msg.type) return;
-
-        if (msg.type === "down") {
-          remoteActive.set(msg.id, {
-            x: msg.x,
-            y: msg.y,
-            radius: msg.r,
-            targetX: msg.x,
-            targetY: msg.y,
-            targetR: msg.r,
-            lastX: msg.x,
-            lastY: msg.y,
-            lastSampleT: performance.now() / 1000,
-            vx: 0,
-            vy: 0,
-            dwell: 0,
-            stillX: msg.x,
-            stillY: msg.y,
-          });
-        } else if (msg.type === "move") {
-          const existing = remoteActive.get(msg.id);
-          if (existing) {
-            existing.targetX = msg.x;
-            existing.targetY = msg.y;
-            existing.targetR = msg.r;
-          } else {
-            remoteActive.set(msg.id, {
-              x: msg.x,
-              y: msg.y,
-              radius: msg.r,
-              targetX: msg.x,
-              targetY: msg.y,
-              targetR: msg.r,
-              lastX: msg.x,
-              lastY: msg.y,
-              lastSampleT: performance.now() / 1000,
-              vx: 0,
-              vy: 0,
-              dwell: 0,
-              stillX: msg.x,
-              stillY: msg.y,
+            document.getElementById("btnHost").addEventListener("click", () => {
+              modeSelect.style.display = "none";
+              hostView.style.display = "flex";
+              backLink.style.display = "block";
+              startHost();
             });
-          }
-        } else if (msg.type === "up") {
-          const ex = remoteActive.get(msg.id);
-          if (ex) {
-            remoteFading.push({
-              x: ex.x,
-              y: ex.y,
-              radius: ex.radius,
-              fadeAlpha: 1.0,
+
+            document.getElementById("btnJoin").addEventListener("click", () => {
+              modeSelect.style.display = "none";
+              joinView.style.display = "flex";
+              backLink.style.display = "block";
+              setTimeout(() => codeInput.focus(), 100);
             });
-            remoteActive.delete(msg.id);
-          }
-        }
-      }
 
-      // ═══════════════════════════════════════════════════════════
-      //  Local Touch
-      // ═══════════════════════════════════════════════════════════
-      function norm(t, r) {
-        const x = (t.clientX - r.left) / r.width;
-        const y = 1 - (t.clientY - r.top) / r.height;
-        const rx = (t.radiusX || 8) / r.width;
-        const ry = (t.radiusY || 8) / r.height;
-        return { x, y, radius: Math.max(Math.sqrt(rx * ry), BASE_MIN_RADIUS) };
-      }
-
-      function spawnLocal(id, n) {
-        const now = performance.now() / 1000;
-        localActive.set(id, {
-          x: n.x,
-          y: n.y,
-          radius: n.radius,
-          lastX: n.x,
-          lastY: n.y,
-          lastSampleT: now,
-          vx: 0,
-          vy: 0,
-          dwell: 0,
-          stillX: n.x,
-          stillY: n.y,
-          lastTrailT: now,
-        });
-      }
-
-      function updateLocal(id, n) {
-        const ex = localActive.get(id);
-        if (!ex) return;
-        ex.x = n.x;
-        ex.y = n.y;
-        ex.radius = n.radius;
-      }
-
-      canvas.addEventListener(
-        "touchstart",
-        (e) => {
-          e.preventDefault();
-          const r = canvas.getBoundingClientRect();
-          for (const t of e.changedTouches) {
-            const n = norm(t, r);
-            spawnLocal(t.identifier, n);
-            sendMsg({
-              type: "down",
-              id: t.identifier,
-              x: n.x,
-              y: n.y,
-              r: n.radius,
+            btnConnect.addEventListener("click", () => {
+              const code = codeInput.value.trim().toUpperCase();
+              if (code.length !== 4) {
+                setHint(joinStatusEl, "代 号 应 为 四 位", "error");
+                return;
+              }
+              startJoin(code);
             });
-          }
-          refreshState();
-        },
-        { passive: false },
-      );
 
-      canvas.addEventListener(
-        "touchmove",
-        (e) => {
-          e.preventDefault();
-          const r = canvas.getBoundingClientRect();
-          for (const t of e.changedTouches) {
-            if (localActive.has(t.identifier)) {
-              const n = norm(t, r);
-              updateLocal(t.identifier, n);
-              sendMsg({
-                type: "move",
-                id: t.identifier,
+            codeInput.addEventListener("input", (e) => {
+              e.target.value = e.target.value.toUpperCase();
+            });
+            codeInput.addEventListener("keydown", (e) => {
+              if (e.key === "Enter") btnConnect.click();
+            });
+
+      <<<<<<< HEAD
+            exitBtn.addEventListener("click", () => {
+              if (conn && isConnected) {
+                try {
+                  conn.send({ type: "bye" });
+                } catch (e) {}
+              }
+              setTimeout(showPairingAgain, 120);
+            });
+
+            // ─── ICE state monitor ───
+            // Polls the underlying RTCPeerConnection's iceConnectionState every 500ms
+            // and updates the UI hint, so user can see what's happening during handshake.
+            function startIceMonitor(statusEl) {
+              if (iceMonitorInterval) clearInterval(iceMonitorInterval);
+              iceMonitorInterval = setInterval(() => {
+                if (!conn || !conn.peerConnection) return;
+                const pc = conn.peerConnection;
+                const state = pc.iceConnectionState;
+                if (isConnected) {
+                  clearInterval(iceMonitorInterval);
+                  iceMonitorInterval = null;
+                  return;
+                }
+                if (state === "new" || state === "checking") {
+                  setHint(statusEl, "协 商 中 · " + state.toUpperCase(), null);
+                } else if (state === "connected" || state === "completed") {
+                  setHint(statusEl, "通 道 已 通", "success");
+                } else if (state === "failed") {
+                  setHint(statusEl, "ICE 失 败 · 网 络 不 通", "error");
+                } else if (state === "disconnected") {
+                  setHint(statusEl, "信 号 不 稳", "error");
+                }
+              }, 500);
+            }
+
+      =======
+            // ─── HOST ───
+      >>>>>>> parent of 365cc58 (Update index.html)
+            function startHost(retry = 0) {
+              isHost = true;
+              const code = genCode();
+              const peerId = ROOM_PREFIX + code;
+              roomCodeEl.textContent = code;
+              setHint(hostStatusEl, "准 备 中", null);
+
+              peer = new Peer(peerId, { debug: 1 });
+
+              peer.on("open", (id) => {
+                setHint(hostStatusEl, "等 待 接 入", null);
+              });
+
+              peer.on("connection", (c) => {
+                conn = c;
+      <<<<<<< HEAD
+                setHint(hostStatusEl, "正 在 建 立", null);
+                startIceMonitor(hostStatusEl);
+
+                // 20 second timeout — TURN can take a while on slow networks
+                hostTimeout = setTimeout(() => {
+                  if (!isConnected) {
+                    setHint(hostStatusEl, "通 道 未 建 立 · 请 朋 友 重 试", "error");
+                    try {
+                      c.close();
+                    } catch (e) {}
+                    conn = null;
+                  }
+                }, 20000);
+
+      =======
+      >>>>>>> parent of 365cc58 (Update index.html)
+                setupConn();
+                setHint(hostStatusEl, "已 接 入", "success");
+                setTimeout(closeOverlay, 700);
+              });
+
+              peer.on("error", (err) => {
+                console.error("host peer err", err.type, err);
+                // if ID is taken, try a fresh code
+                if (err.type === "unavailable-id" && retry < 3) {
+                  try {
+                    peer.destroy();
+                  } catch (e) {}
+                  setTimeout(() => startHost(retry + 1), 300);
+                  return;
+                }
+                if (
+                  err.type === "network" ||
+                  err.type === "server-error" ||
+                  err.type === "socket-error"
+                ) {
+                  setHint(hostStatusEl, "服 务 不 通 · 刷 新 重 试", "error");
+                } else {
+                  setHint(hostStatusEl, "出 错 · " + err.type, "error");
+                }
+              });
+
+              peer.on("disconnected", () => {
+                setHint(hostStatusEl, "信 号 中 断 · 重 连 中", "error");
+                try {
+                  peer.reconnect();
+                } catch (e) {}
+              });
+            }
+
+            function startJoin(code) {
+              isHost = false;
+              btnConnect.disabled = true;
+              setHint(joinStatusEl, "连 接 中", null);
+
+              peer = new Peer(null, { debug: 1 });
+              const targetId = ROOM_PREFIX + code;
+
+              peer.on("open", (myId) => {
+                // small delay before connect — gives signaling server a moment
+                setTimeout(() => {
+                  conn = peer.connect(targetId, {
+                    reliable: true,
+                    serialization: "json",
+                  });
+
+                  if (!conn) {
+                    setHint(joinStatusEl, "无 法 发 起 · 重 试", "error");
+                    btnConnect.disabled = false;
+                    return;
+                  }
+
+                  setupConn();
+                  startIceMonitor(joinStatusEl);
+
+      <<<<<<< HEAD
+                  // 20 second timeout
+                  joinTimeout = setTimeout(() => {
+                    if (!isConnected) {
+                      setHint(joinStatusEl, "通 道 未 通 · 网 络 受 限", "error");
+      =======
+                  // hard timeout — if conn.open doesn't fire within 8s, tell user
+                  joinTimeout = setTimeout(() => {
+                    if (!isConnected) {
+                      setHint(joinStatusEl, "对 方 未 响 应 · 检 查 代 号", "error");
+      >>>>>>> parent of 365cc58 (Update index.html)
+                      btnConnect.disabled = false;
+                      try {
+                        conn.close();
+                      } catch (e) {}
+                      try {
+                        peer.destroy();
+                      } catch (e) {}
+                    }
+      <<<<<<< HEAD
+                  }, 20000);
+      =======
+                  }, 8000);
+      >>>>>>> parent of 365cc58 (Update index.html)
+                }, 400);
+              });
+
+              peer.on("error", (err) => {
+                console.error("join peer err", err.type, err);
+                if (joinTimeout) {
+                  clearTimeout(joinTimeout);
+                  joinTimeout = null;
+                }
+                btnConnect.disabled = false;
+                if (err.type === "peer-unavailable") {
+                  setHint(joinStatusEl, "代 号 不 存 在 · 重 试", "error");
+                } else if (
+                  err.type === "network" ||
+                  err.type === "server-error" ||
+                  err.type === "socket-error"
+                ) {
+                  setHint(joinStatusEl, "服 务 不 通 · 刷 新 重 试", "error");
+                } else {
+                  setHint(joinStatusEl, "出 错 · " + err.type, "error");
+                }
+              });
+            }
+
+            function setupConn() {
+              conn.on("open", () => {
+                isConnected = true;
+                connDot.classList.add("connected");
+                if (joinTimeout) {
+                  clearTimeout(joinTimeout);
+                  joinTimeout = null;
+                }
+      <<<<<<< HEAD
+                if (hostTimeout) {
+                  clearTimeout(hostTimeout);
+                  hostTimeout = null;
+                }
+                if (iceMonitorInterval) {
+                  clearInterval(iceMonitorInterval);
+                  iceMonitorInterval = null;
+                }
+
+                if (isHost) {
+                  setHint(hostStatusEl, "已 接 入", "success");
+                } else {
+      =======
+                if (!isHost) {
+      >>>>>>> parent of 365cc58 (Update index.html)
+                  setHint(joinStatusEl, "已 连 接", "success");
+                  setTimeout(closeOverlay, 700);
+                }
+              });
+
+      <<<<<<< HEAD
+              conn.on("data", (msg) => {
+                if (msg && msg.type === "bye") {
+                  showPairingAgain();
+                  return;
+                }
+                handleRemoteMsg(msg);
+              });
+
+              conn.on("close", () => {
+                if (isConnected) {
+                  showPairingAgain();
+                } else {
+                  isConnected = false;
+                  connDot.classList.remove("connected");
+                  exitBtn.classList.remove("visible");
+                  remoteActive.clear();
+                }
+      =======
+              conn.on("data", (msg) => handleRemoteMsg(msg));
+
+              conn.on("close", () => {
+                isConnected = false;
+                connDot.classList.remove("connected");
+                remoteActive.clear();
+      >>>>>>> parent of 365cc58 (Update index.html)
+              });
+
+              conn.on("error", (err) => console.error("conn err", err));
+            }
+
+            function closeOverlay() {
+              overlay.classList.add("hidden");
+            }
+
+            function sendMsg(msg) {
+              if (conn && isConnected) {
+                try {
+                  conn.send(msg);
+                } catch (e) {}
+              }
+            }
+
+            function handleRemoteMsg(msg) {
+              if (!msg || !msg.type) return;
+
+              if (msg.type === "down") {
+                remoteActive.set(msg.id, {
+                  x: msg.x,
+                  y: msg.y,
+                  radius: msg.r,
+                  targetX: msg.x,
+                  targetY: msg.y,
+                  targetR: msg.r,
+                  lastX: msg.x,
+                  lastY: msg.y,
+                  lastSampleT: performance.now() / 1000,
+                  vx: 0,
+                  vy: 0,
+                  dwell: 0,
+                  stillX: msg.x,
+                  stillY: msg.y,
+                });
+              } else if (msg.type === "move") {
+                const existing = remoteActive.get(msg.id);
+                if (existing) {
+                  existing.targetX = msg.x;
+                  existing.targetY = msg.y;
+                  existing.targetR = msg.r;
+                } else {
+                  remoteActive.set(msg.id, {
+                    x: msg.x,
+                    y: msg.y,
+                    radius: msg.r,
+                    targetX: msg.x,
+                    targetY: msg.y,
+                    targetR: msg.r,
+                    lastX: msg.x,
+                    lastY: msg.y,
+                    lastSampleT: performance.now() / 1000,
+                    vx: 0,
+                    vy: 0,
+                    dwell: 0,
+                    stillX: msg.x,
+                    stillY: msg.y,
+                  });
+                }
+              } else if (msg.type === "up") {
+                const ex = remoteActive.get(msg.id);
+                if (ex) {
+                  remoteFading.push({
+                    x: ex.x,
+                    y: ex.y,
+                    radius: ex.radius,
+                    fadeAlpha: 1.0,
+                  });
+                  remoteActive.delete(msg.id);
+                }
+              }
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            //  Local Touch
+            // ═══════════════════════════════════════════════════════════
+            function norm(t, r) {
+              const x = (t.clientX - r.left) / r.width;
+              const y = 1 - (t.clientY - r.top) / r.height;
+              const rx = (t.radiusX || 8) / r.width;
+              const ry = (t.radiusY || 8) / r.height;
+              return { x, y, radius: Math.max(Math.sqrt(rx * ry), BASE_MIN_RADIUS) };
+            }
+
+            function spawnLocal(id, n) {
+              const now = performance.now() / 1000;
+              localActive.set(id, {
                 x: n.x,
                 y: n.y,
-                r: n.radius,
+                radius: n.radius,
+                lastX: n.x,
+                lastY: n.y,
+                lastSampleT: now,
+                vx: 0,
+                vy: 0,
+                dwell: 0,
+                stillX: n.x,
+                stillY: n.y,
+                lastTrailT: now,
               });
             }
-          }
-          refreshState();
-        },
-        { passive: false },
-      );
 
-      canvas.addEventListener(
-        "touchend",
-        (e) => {
-          e.preventDefault();
-          for (const t of e.changedTouches) {
-            const ex = localActive.get(t.identifier);
-            if (ex) {
-              localFading.push({
-                x: ex.x,
-                y: ex.y,
-                radius: ex.radius,
-                fadeAlpha: 1.0,
-              });
-              localActive.delete(t.identifier);
-              sendMsg({ type: "up", id: t.identifier });
+            function updateLocal(id, n) {
+              const ex = localActive.get(id);
+              if (!ex) return;
+              ex.x = n.x;
+              ex.y = n.y;
+              ex.radius = n.radius;
             }
-          }
-          refreshState();
-        },
-        { passive: false },
-      );
 
-      canvas.addEventListener("touchcancel", (e) => {
-        for (const t of e.changedTouches) {
-          const ex = localActive.get(t.identifier);
-          if (ex) {
-            localFading.push({
-              x: ex.x,
-              y: ex.y,
-              radius: ex.radius,
-              fadeAlpha: 1.0,
-            });
-            localActive.delete(t.identifier);
-            sendMsg({ type: "up", id: t.identifier });
-          }
-        }
-        refreshState();
-      });
+            canvas.addEventListener(
+              "touchstart",
+              (e) => {
+                e.preventDefault();
+                const r = canvas.getBoundingClientRect();
+                for (const t of e.changedTouches) {
+                  const n = norm(t, r);
+                  spawnLocal(t.identifier, n);
+                  sendMsg({
+                    type: "down",
+                    id: t.identifier,
+                    x: n.x,
+                    y: n.y,
+                    r: n.radius,
+                  });
+                }
+                refreshState();
+              },
+              { passive: false },
+            );
 
-      let mDown = false;
-      canvas.addEventListener("mousedown", (e) => {
-        mDown = true;
-        const r = canvas.getBoundingClientRect();
-        const n = {
-          x: (e.clientX - r.left) / r.width,
-          y: 1 - (e.clientY - r.top) / r.height,
-          radius: 0.025,
-        };
-        spawnLocal("m", n);
-        sendMsg({ type: "down", id: "m", x: n.x, y: n.y, r: n.radius });
-        refreshState();
-      });
-      canvas.addEventListener("mousemove", (e) => {
-        if (!mDown) return;
-        const r = canvas.getBoundingClientRect();
-        const n = {
-          x: (e.clientX - r.left) / r.width,
-          y: 1 - (e.clientY - r.top) / r.height,
-          radius: 0.025,
-        };
-        updateLocal("m", n);
-        sendMsg({ type: "move", id: "m", x: n.x, y: n.y, r: n.radius });
-        refreshState();
-      });
-      canvas.addEventListener("mouseup", () => {
-        if (mDown) {
-          mDown = false;
-          const ex = localActive.get("m");
-          if (ex) {
-            localFading.push({
-              x: ex.x,
-              y: ex.y,
-              radius: ex.radius,
-              fadeAlpha: 1.0,
-            });
-            localActive.delete("m");
-            sendMsg({ type: "up", id: "m" });
-          }
-          refreshState();
-        }
-      });
+            canvas.addEventListener(
+              "touchmove",
+              (e) => {
+                e.preventDefault();
+                const r = canvas.getBoundingClientRect();
+                for (const t of e.changedTouches) {
+                  if (localActive.has(t.identifier)) {
+                    const n = norm(t, r);
+                    updateLocal(t.identifier, n);
+                    sendMsg({
+                      type: "move",
+                      id: t.identifier,
+                      x: n.x,
+                      y: n.y,
+                      r: n.radius,
+                    });
+                  }
+                }
+                refreshState();
+              },
+              { passive: false },
+            );
 
-      // ═══════════════════════════════════════════════════════════
-      //  Physics step
-      // ═══════════════════════════════════════════════════════════
-      function stepPoint(p, dt) {
-        const dx = p.x - p.lastX;
-        const dy = p.y - p.lastY;
-        const instVx = dx / Math.max(dt, 0.0001);
-        const instVy = dy / Math.max(dt, 0.0001);
-        p.vx += (instVx - p.vx) * Math.min(1, dt * 12);
-        p.vy += (instVy - p.vy) * Math.min(1, dt * 12);
+            canvas.addEventListener(
+              "touchend",
+              (e) => {
+                e.preventDefault();
+                for (const t of e.changedTouches) {
+                  const ex = localActive.get(t.identifier);
+                  if (ex) {
+                    localFading.push({
+                      x: ex.x,
+                      y: ex.y,
+                      radius: ex.radius,
+                      fadeAlpha: 1.0,
+                    });
+                    localActive.delete(t.identifier);
+                    sendMsg({ type: "up", id: t.identifier });
+                  }
+                }
+                refreshState();
+              },
+              { passive: false },
+            );
 
-        const stillDx = p.x - p.stillX;
-        const stillDy = p.y - p.stillY;
-        const stillDist = Math.sqrt(stillDx * stillDx + stillDy * stillDy);
-        if (stillDist < 0.008) {
-          p.dwell += dt;
-        } else {
-          p.dwell = 0;
-          p.stillX = p.x;
-          p.stillY = p.y;
-        }
-
-        p.lastX = p.x;
-        p.lastY = p.y;
-      }
-
-      function emitTrail(pool, p, now) {
-        if (now - p.lastTrailT < TRAIL_EMIT_INTERVAL) return;
-        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-        if (speed < 0.08 && p.dwell < 0.6) {
-          p.lastTrailT = now;
-          return;
-        }
-        pool.push({
-          x: p.x,
-          y: p.y,
-          radius: p.radius * (0.7 + Math.min(p.dwell, 1.0) * 0.3),
-          birthT: now,
-          vx: p.vx * 0.3,
-          vy: p.vy * 0.3,
-        });
-        p.lastTrailT = now;
-        if (pool.length > 120) pool.shift();
-      }
-
-      function stepTrails(pool, now) {
-        for (let i = pool.length - 1; i >= 0; i--) {
-          const age = now - pool[i].birthT;
-          if (age > TRAIL_LIFETIME) pool.splice(i, 1);
-        }
-      }
-
-      function emitBridges(touchPool, bridgePool, now) {
-        const pts = [...touchPool.values()];
-        for (let i = 0; i < pts.length; i++) {
-          for (let j = i + 1; j < pts.length; j++) {
-            const a = pts[i],
-              b = pts[j];
-            const dx = b.x - a.x,
-              dy = b.y - a.y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            if (d < 0.001) continue;
-            if (d > 0.32) continue;
-            const t = 0.5;
-            const closeness = 1.0 - d / 0.32;
-            bridgePool.push({
-              x: a.x + dx * t,
-              y: a.y + dy * t,
-              radius: (a.radius + b.radius) * 0.5 * closeness * 0.9,
-              birthT: now,
-              vx: 0,
-              vy: 0,
-            });
-          }
-        }
-      }
-
-      function checkCrossMerge() {
-        const locals = [...localActive.values()];
-        const remotes = [...remoteActive.values()];
-
-        if (locals.length === 0 || remotes.length === 0) {
-          if (locals.length >= 2) {
-            for (let i = 0; i < locals.length; i++)
-              for (let j = i + 1; j < locals.length; j++) {
-                const dx = locals[i].x - locals[j].x,
-                  dy = locals[i].y - locals[j].y;
-                if (
-                  Math.sqrt(dx * dx + dy * dy) <
-                  (locals[i].radius + locals[j].radius) * 5.0
-                )
-                  return true;
+            canvas.addEventListener("touchcancel", (e) => {
+              for (const t of e.changedTouches) {
+                const ex = localActive.get(t.identifier);
+                if (ex) {
+                  localFading.push({
+                    x: ex.x,
+                    y: ex.y,
+                    radius: ex.radius,
+                    fadeAlpha: 1.0,
+                  });
+                  localActive.delete(t.identifier);
+                  sendMsg({ type: "up", id: t.identifier });
+                }
               }
-          }
-          return false;
-        }
+              refreshState();
+            });
 
-        for (const l of locals) {
-          for (const r of remotes) {
-            const dx = l.x - r.x,
-              dy = l.y - r.y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            if (d < 0.22) return true;
-          }
-        }
-        return false;
-      }
+            let mDown = false;
+            canvas.addEventListener("mousedown", (e) => {
+              mDown = true;
+              const r = canvas.getBoundingClientRect();
+              const n = {
+                x: (e.clientX - r.left) / r.width,
+                y: 1 - (e.clientY - r.top) / r.height,
+                radius: 0.025,
+              };
+              spawnLocal("m", n);
+              sendMsg({ type: "down", id: "m", x: n.x, y: n.y, r: n.radius });
+              refreshState();
+            });
+            canvas.addEventListener("mousemove", (e) => {
+              if (!mDown) return;
+              const r = canvas.getBoundingClientRect();
+              const n = {
+                x: (e.clientX - r.left) / r.width,
+                y: 1 - (e.clientY - r.top) / r.height,
+                radius: 0.025,
+              };
+              updateLocal("m", n);
+              sendMsg({ type: "move", id: "m", x: n.x, y: n.y, r: n.radius });
+              refreshState();
+            });
+            canvas.addEventListener("mouseup", () => {
+              if (mDown) {
+                mDown = false;
+                const ex = localActive.get("m");
+                if (ex) {
+                  localFading.push({
+                    x: ex.x,
+                    y: ex.y,
+                    radius: ex.radius,
+                    fadeAlpha: 1.0,
+                  });
+                  localActive.delete("m");
+                  sendMsg({ type: "up", id: "m" });
+                }
+                refreshState();
+              }
+            });
 
-      function refreshState() {
-        const ln = localActive.size;
-        const rn = remoteActive.size;
-        merged = checkCrossMerge();
+            // ═══════════════════════════════════════════════════════════
+            //  Physics step
+            // ═══════════════════════════════════════════════════════════
+            function stepPoint(p, dt) {
+              const dx = p.x - p.lastX;
+              const dy = p.y - p.lastY;
+              const instVx = dx / Math.max(dt, 0.0001);
+              const instVy = dy / Math.max(dt, 0.0001);
+              p.vx += (instVx - p.vx) * Math.min(1, dt * 12);
+              p.vy += (instVy - p.vy) * Math.min(1, dt * 12);
 
-        if (ln === 0 && rn === 0) {
-          stateEl.textContent = isConnected ? "共 · TOGETHER" : "独 · ALONE";
-        } else if (merged) {
-          stateEl.textContent = "相 遇 · MEET";
-        } else if (rn > 0 && ln > 0) {
-          stateEl.textContent = "同 在 · WITH";
-        } else if (rn > 0) {
-          stateEl.textContent = "彼 · OTHER";
-        } else if (ln === 1) {
-          const t = [...localActive.values()][0];
-          stateEl.textContent = t.radius > 0.06 ? "面 · PALM" : "点 · TAP";
-        } else {
-          stateEl.textContent = `多 · ×${ln}`;
-        }
-      }
+              const stillDx = p.x - p.stillX;
+              const stillDy = p.y - p.stillY;
+              const stillDist = Math.sqrt(stillDx * stillDx + stillDy * stillDy);
+              if (stillDist < 0.008) {
+                p.dwell += dt;
+              } else {
+                p.dwell = 0;
+                p.stillX = p.x;
+                p.stillY = p.y;
+              }
 
-      function stepWarmth(dt) {
-        if (merged) {
-          mergeT += dt;
-          wasMerged = true;
-          if (mergeT > 1.0) target = Math.min(1, target + 0.22 * dt);
-        } else if (
-          wasMerged &&
-          (localActive.size > 0 || remoteActive.size > 0)
-        ) {
-          target = Math.max(-1, target - 0.35 * dt);
-          mergeT = Math.max(0, mergeT - dt * 0.6);
-        } else if (localActive.size === 0 && remoteActive.size === 0) {
-          target += (0 - target) * 0.18 * dt;
-          mergeT = Math.max(0, mergeT - dt * 0.4);
-          if (mergeT <= 0.01) wasMerged = false;
-        } else {
-          mergeT = Math.max(0, mergeT - dt * 0.8);
-        }
-        warmth += (target - warmth) * Math.min(1, dt * 2.2);
-      }
+              p.lastX = p.x;
+              p.lastY = p.y;
+            }
 
-      function resize() {
-        const d = Math.min(devicePixelRatio || 1, 2);
-        canvas.width = innerWidth * d;
-        canvas.height = innerHeight * d;
-        gl.viewport(0, 0, canvas.width, canvas.height);
-      }
-      addEventListener("resize", resize);
-      resize();
+            function emitTrail(pool, p, now) {
+              if (now - p.lastTrailT < TRAIL_EMIT_INTERVAL) return;
+              const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+              if (speed < 0.08 && p.dwell < 0.6) {
+                p.lastTrailT = now;
+                return;
+              }
+              pool.push({
+                x: p.x,
+                y: p.y,
+                radius: p.radius * (0.7 + Math.min(p.dwell, 1.0) * 0.3),
+                birthT: now,
+                vx: p.vx * 0.3,
+                vy: p.vy * 0.3,
+              });
+              p.lastTrailT = now;
+              if (pool.length > 120) pool.shift();
+            }
 
-      const bridgeLocal = [];
-      const bridgeRemote = [];
+            function stepTrails(pool, now) {
+              for (let i = pool.length - 1; i >= 0; i--) {
+                const age = now - pool[i].birthT;
+                if (age > TRAIL_LIFETIME) pool.splice(i, 1);
+              }
+            }
 
-      let prev = performance.now();
+            function emitBridges(touchPool, bridgePool, now) {
+              const pts = [...touchPool.values()];
+              for (let i = 0; i < pts.length; i++) {
+                for (let j = i + 1; j < pts.length; j++) {
+                  const a = pts[i],
+                    b = pts[j];
+                  const dx = b.x - a.x,
+                    dy = b.y - a.y;
+                  const d = Math.sqrt(dx * dx + dy * dy);
+                  if (d < 0.001) continue;
+                  if (d > 0.32) continue;
+                  const t = 0.5;
+                  const closeness = 1.0 - d / 0.32;
+                  bridgePool.push({
+                    x: a.x + dx * t,
+                    y: a.y + dy * t,
+                    radius: (a.radius + b.radius) * 0.5 * closeness * 0.9,
+                    birthT: now,
+                    vx: 0,
+                    vy: 0,
+                  });
+                }
+              }
+            }
 
-      function loop(now) {
-        const dt = Math.min((now - prev) / 1000, 0.1);
-        prev = now;
-        const nowS = now / 1000;
+            function checkCrossMerge() {
+              const locals = [...localActive.values()];
+              const remotes = [...remoteActive.values()];
 
-        for (const p of localActive.values()) {
-          stepPoint(p, dt);
-          emitTrail(localTrails, p, nowS);
-        }
+              if (locals.length === 0 || remotes.length === 0) {
+                if (locals.length >= 2) {
+                  for (let i = 0; i < locals.length; i++)
+                    for (let j = i + 1; j < locals.length; j++) {
+                      const dx = locals[i].x - locals[j].x,
+                        dy = locals[i].y - locals[j].y;
+                      if (
+                        Math.sqrt(dx * dx + dy * dy) <
+                        (locals[i].radius + locals[j].radius) * 5.0
+                      )
+                        return true;
+                    }
+                }
+                return false;
+              }
 
-        for (const r of remoteActive.values()) {
-          r.x += (r.targetX - r.x) * Math.min(1, dt * 12);
-          r.y += (r.targetY - r.y) * Math.min(1, dt * 12);
-          r.radius += (r.targetR - r.radius) * Math.min(1, dt * 8);
-          stepPoint(r, dt);
-          emitTrail(remoteTrails, r, nowS);
-        }
+              for (const l of locals) {
+                for (const r of remotes) {
+                  const dx = l.x - r.x,
+                    dy = l.y - r.y;
+                  const d = Math.sqrt(dx * dx + dy * dy);
+                  if (d < 0.22) return true;
+                }
+              }
+              return false;
+            }
 
-        bridgeLocal.length = 0;
-        bridgeRemote.length = 0;
-        emitBridges(localActive, bridgeLocal, nowS);
-        emitBridges(remoteActive, bridgeRemote, nowS);
+            function refreshState() {
+              const ln = localActive.size;
+              const rn = remoteActive.size;
+              merged = checkCrossMerge();
 
-        stepTrails(localTrails, nowS);
-        stepTrails(remoteTrails, nowS);
+              if (ln === 0 && rn === 0) {
+                stateEl.textContent = isConnected ? "共 · TOGETHER" : "独 · ALONE";
+              } else if (merged) {
+                stateEl.textContent = "相 遇 · MEET";
+              } else if (rn > 0 && ln > 0) {
+                stateEl.textContent = "同 在 · WITH";
+              } else if (rn > 0) {
+                stateEl.textContent = "彼 · OTHER";
+              } else if (ln === 1) {
+                const t = [...localActive.values()][0];
+                stateEl.textContent = t.radius > 0.06 ? "面 · PALM" : "点 · TAP";
+              } else {
+                stateEl.textContent = `多 · ×${ln}`;
+              }
+            }
 
-        refreshState();
-        stepWarmth(dt);
+            function stepWarmth(dt) {
+              if (merged) {
+                mergeT += dt;
+                wasMerged = true;
+                if (mergeT > 1.0) target = Math.min(1, target + 0.22 * dt);
+              } else if (
+                wasMerged &&
+                (localActive.size > 0 || remoteActive.size > 0)
+              ) {
+                target = Math.max(-1, target - 0.35 * dt);
+                mergeT = Math.max(0, mergeT - dt * 0.6);
+              } else if (localActive.size === 0 && remoteActive.size === 0) {
+                target += (0 - target) * 0.18 * dt;
+                mergeT = Math.max(0, mergeT - dt * 0.4);
+                if (mergeT <= 0.01) wasMerged = false;
+              } else {
+                mergeT = Math.max(0, mergeT - dt * 0.8);
+              }
+              warmth += (target - warmth) * Math.min(1, dt * 2.2);
+            }
 
-        gl.uniform2f(uRes, canvas.width, canvas.height);
-        gl.uniform1f(uTm, now / 1000);
-        gl.uniform1f(uW, warmth);
+            function resize() {
+              const d = Math.min(devicePixelRatio || 1, 2);
+              canvas.width = innerWidth * d;
+              canvas.height = innerHeight * d;
+              gl.viewport(0, 0, canvas.width, canvas.height);
+            }
+            addEventListener("resize", resize);
+            resize();
 
-        for (let i = localFading.length - 1; i >= 0; i--) {
-          localFading[i].fadeAlpha -= 0.025;
-          localFading[i].radius *= 1.008;
-          if (localFading[i].fadeAlpha <= 0) localFading.splice(i, 1);
-        }
-        for (let i = remoteFading.length - 1; i >= 0; i--) {
-          remoteFading[i].fadeAlpha -= 0.025;
-          remoteFading[i].radius *= 1.008;
-          if (remoteFading[i].fadeAlpha <= 0) remoteFading.splice(i, 1);
-        }
+            const bridgeLocal = [];
+            const bridgeRemote = [];
 
-        const slots = [];
-        const pushSlot = (p, kind, virtue, dwellOverride) => {
-          if (slots.length >= MAX_SLOTS) return;
-          const dwell =
-            dwellOverride !== undefined ? dwellOverride : p.dwell || 0;
-          slots.push({
-            x: p.x,
-            y: p.y,
-            radius: p.radius,
-            kind,
-            vx: p.vx || 0,
-            vy: p.vy || 0,
-            virtue,
-            dwell,
-          });
-        };
+            let prev = performance.now();
 
-        for (const p of localActive.values()) pushSlot(p, 0, 0);
-        for (const p of remoteActive.values()) pushSlot(p, 1, 0);
+            function loop(now) {
+              const dt = Math.min((now - prev) / 1000, 0.1);
+              prev = now;
+              const nowS = now / 1000;
 
-        for (const b of bridgeLocal) pushSlot(b, 0, 0.5, 0);
-        for (const b of bridgeRemote) pushSlot(b, 1, 0.5, 0);
+              for (const p of localActive.values()) {
+                stepPoint(p, dt);
+                emitTrail(localTrails, p, nowS);
+              }
 
-        for (const t of localTrails) {
-          if (slots.length >= MAX_SLOTS) break;
-          const age = nowS - t.birthT;
-          const lifeT = Math.max(0, 1.0 - age / TRAIL_LIFETIME);
-          slots.push({
-            x: t.x,
-            y: t.y,
-            radius: t.radius * (0.4 + lifeT * 0.6),
-            kind: 0,
-            vx: t.vx,
-            vy: t.vy,
-            virtue: 0.7 + (1.0 - lifeT) * 0.3,
-            dwell: 0,
-          });
-        }
-        for (const t of remoteTrails) {
-          if (slots.length >= MAX_SLOTS) break;
-          const age = nowS - t.birthT;
-          const lifeT = Math.max(0, 1.0 - age / TRAIL_LIFETIME);
-          slots.push({
-            x: t.x,
-            y: t.y,
-            radius: t.radius * (0.4 + lifeT * 0.6),
-            kind: 1,
-            vx: t.vx,
-            vy: t.vy,
-            virtue: 0.8 + (1.0 - lifeT) * 0.2,
-            dwell: 0,
-          });
-        }
+              for (const r of remoteActive.values()) {
+                r.x += (r.targetX - r.x) * Math.min(1, dt * 12);
+                r.y += (r.targetY - r.y) * Math.min(1, dt * 12);
+                r.radius += (r.targetR - r.radius) * Math.min(1, dt * 8);
+                stepPoint(r, dt);
+                emitTrail(remoteTrails, r, nowS);
+              }
 
-        for (const f of localFading) {
-          if (slots.length >= MAX_SLOTS) break;
-          slots.push({
-            x: f.x,
-            y: f.y,
-            radius: f.radius * f.fadeAlpha,
-            kind: 0,
-            vx: 0,
-            vy: 0,
-            virtue: 1.0 - f.fadeAlpha * 0.3,
-            dwell: 0,
-          });
-        }
-        for (const f of remoteFading) {
-          if (slots.length >= MAX_SLOTS) break;
-          slots.push({
-            x: f.x,
-            y: f.y,
-            radius: f.radius * f.fadeAlpha,
-            kind: 1,
-            vx: 0,
-            vy: 0,
-            virtue: 1.0 - f.fadeAlpha * 0.2,
-            dwell: 0,
-          });
-        }
+              bridgeLocal.length = 0;
+              bridgeRemote.length = 0;
+              emitBridges(localActive, bridgeLocal, nowS);
+              emitBridges(remoteActive, bridgeRemote, nowS);
 
-        const cnt = Math.min(slots.length, MAX_SLOTS);
-        gl.uniform1i(uCnt, cnt);
-        for (let i = 0; i < MAX_SLOTS; i++) {
-          if (i < cnt) {
-            const p = slots[i];
-            gl.uniform4f(uTA[i], p.x, p.y, Math.max(p.radius, 0.001), p.kind);
-            gl.uniform4f(uTB[i], p.vx, p.vy, p.virtue, p.dwell);
-          } else {
-            gl.uniform4f(uTA[i], -10, -10, 0.001, 0);
-            gl.uniform4f(uTB[i], 0, 0, 0, 0);
-          }
-        }
+              stepTrails(localTrails, nowS);
+              stepTrails(remoteTrails, nowS);
 
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-        requestAnimationFrame(loop);
-      }
+              refreshState();
+              stepWarmth(dt);
 
-      requestAnimationFrame(loop);
+              gl.uniform2f(uRes, canvas.width, canvas.height);
+              gl.uniform1f(uTm, now / 1000);
+              gl.uniform1f(uW, warmth);
+
+              for (let i = localFading.length - 1; i >= 0; i--) {
+                localFading[i].fadeAlpha -= 0.025;
+                localFading[i].radius *= 1.008;
+                if (localFading[i].fadeAlpha <= 0) localFading.splice(i, 1);
+              }
+              for (let i = remoteFading.length - 1; i >= 0; i--) {
+                remoteFading[i].fadeAlpha -= 0.025;
+                remoteFading[i].radius *= 1.008;
+                if (remoteFading[i].fadeAlpha <= 0) remoteFading.splice(i, 1);
+              }
+
+              const slots = [];
+              const pushSlot = (p, kind, virtue, dwellOverride) => {
+                if (slots.length >= MAX_SLOTS) return;
+                const dwell =
+                  dwellOverride !== undefined ? dwellOverride : p.dwell || 0;
+                slots.push({
+                  x: p.x,
+                  y: p.y,
+                  radius: p.radius,
+                  kind,
+                  vx: p.vx || 0,
+                  vy: p.vy || 0,
+                  virtue,
+                  dwell,
+                });
+              };
+
+              for (const p of localActive.values()) pushSlot(p, 0, 0);
+              for (const p of remoteActive.values()) pushSlot(p, 1, 0);
+
+              for (const b of bridgeLocal) pushSlot(b, 0, 0.5, 0);
+              for (const b of bridgeRemote) pushSlot(b, 1, 0.5, 0);
+
+              for (const t of localTrails) {
+                if (slots.length >= MAX_SLOTS) break;
+                const age = nowS - t.birthT;
+                const lifeT = Math.max(0, 1.0 - age / TRAIL_LIFETIME);
+                slots.push({
+                  x: t.x,
+                  y: t.y,
+                  radius: t.radius * (0.4 + lifeT * 0.6),
+                  kind: 0,
+                  vx: t.vx,
+                  vy: t.vy,
+                  virtue: 0.7 + (1.0 - lifeT) * 0.3,
+                  dwell: 0,
+                });
+              }
+              for (const t of remoteTrails) {
+                if (slots.length >= MAX_SLOTS) break;
+                const age = nowS - t.birthT;
+                const lifeT = Math.max(0, 1.0 - age / TRAIL_LIFETIME);
+                slots.push({
+                  x: t.x,
+                  y: t.y,
+                  radius: t.radius * (0.4 + lifeT * 0.6),
+                  kind: 1,
+                  vx: t.vx,
+                  vy: t.vy,
+                  virtue: 0.8 + (1.0 - lifeT) * 0.2,
+                  dwell: 0,
+                });
+              }
+
+              for (const f of localFading) {
+                if (slots.length >= MAX_SLOTS) break;
+                slots.push({
+                  x: f.x,
+                  y: f.y,
+                  radius: f.radius * f.fadeAlpha,
+                  kind: 0,
+                  vx: 0,
+                  vy: 0,
+                  virtue: 1.0 - f.fadeAlpha * 0.3,
+                  dwell: 0,
+                });
+              }
+              for (const f of remoteFading) {
+                if (slots.length >= MAX_SLOTS) break;
+                slots.push({
+                  x: f.x,
+                  y: f.y,
+                  radius: f.radius * f.fadeAlpha,
+                  kind: 1,
+                  vx: 0,
+                  vy: 0,
+                  virtue: 1.0 - f.fadeAlpha * 0.2,
+                  dwell: 0,
+                });
+              }
+
+              const cnt = Math.min(slots.length, MAX_SLOTS);
+              gl.uniform1i(uCnt, cnt);
+              for (let i = 0; i < MAX_SLOTS; i++) {
+                if (i < cnt) {
+                  const p = slots[i];
+                  gl.uniform4f(uTA[i], p.x, p.y, Math.max(p.radius, 0.001), p.kind);
+                  gl.uniform4f(uTB[i], p.vx, p.vy, p.virtue, p.dwell);
+                } else {
+                  gl.uniform4f(uTA[i], -10, -10, 0.001, 0);
+                  gl.uniform4f(uTB[i], 0, 0, 0, 0);
+                }
+              }
+
+              gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+              requestAnimationFrame(loop);
+            }
+
+            requestAnimationFrame(loop);
     </script>
   </body>
 </html>
