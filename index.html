@@ -304,11 +304,6 @@ void main() {
 
       const MAX_SLOTS = 32;
 
-      // ─── Shader: now with per-touch hue + softer edges ───
-      // Each slot now has THREE vec4s:
-      //   A = (x, y, radius, kind)        kind 0=local, 1=remote
-      //   B = (velX, velY, virtue, dwell)
-      //   C = (hueR, hueG, hueB, hueAmt)  hueAmt 0=pure ink, 1=pure colored
       const fragSrc = `
 #extension GL_OES_standard_derivatives : enable
 precision highp float;
@@ -373,9 +368,6 @@ vec3 mapInk(float depth, float w, float remoteRatio, vec3 hueColor, float hueAmt
   float absW = abs(w);
   vec3 baseInk = mix(INK, INK_REMOTE, remoteRatio);
 
-  // Color tap hue: independent of warmth state machine.
-  // We replace baseInk with hueColor where hueAmt is high, with a deeper
-  // shade in the core and the lighter hue at the edge to feel like ink soaked into paper.
   vec3 hueDeep = hueColor * 0.55;
   vec3 hueLight = mix(hueColor, vec3(1.0, 1.0, 1.0), 0.25);
   vec3 hueGrad = mix(hueDeep, hueLight, smoothstep(0.0, 1.0, depth));
@@ -414,7 +406,6 @@ void main() {
 
     vec2 delta = pos - tp;
 
-    // ─── Velocity stretch — much gentler now ───
     float speed = length(vel);
     float stretchAmt = clamp(speed * 1.2, 0.0, 0.18);
     if (speed > 0.0001) {
@@ -428,7 +419,6 @@ void main() {
 
     float d = length(delta);
 
-    // ─── Smaller tighter blob, less sigma multiplier ───
     float sigMul = mix(1.15, 1.4, kind);
     float dwellBoost = 1.0 + smoothstep(0.0, 2.5, dwell) * 0.35;
     float sig = r * sigMul * dwellBoost;
@@ -443,7 +433,6 @@ void main() {
     virtueAccum += g * virtue;
     totalWeight += g;
 
-    // accumulate hue weighted by this point's contribution
     hueAccum += hueColor * g * hueAmt;
     hueAmtAccum += g * hueAmt;
   }
@@ -474,9 +463,6 @@ void main() {
 
   float ink = clamp(shadow*0.55 + core*0.35 + halo, 0.0, 1.0);
 
-  // ─── Softer edges: real edge no longer sharply defined ───
-  // Both real and virtual now use wide smoothsteps; the difference is
-  // density at the core, not the presence of an outline.
   float edgeReal = smoothstep(0.0, 0.28, df);
   float edgeVirtual = smoothstep(0.0, 0.42, df);
   float edge = mix(edgeReal, edgeVirtual, avgVirtue);
@@ -560,23 +546,20 @@ void main() {
         mergeT = 0;
 
       const TRAIL_LIFETIME = 0.55;
-      const TRAIL_EMIT_INTERVAL = 0.012;
-      const BASE_MIN_RADIUS = 0.006; // smaller still
+      const BASE_MIN_RADIUS = 0.006;
 
-      // ─── Tap detection params ───
-      const TAP_MAX_DURATION = 0.28; // seconds; under this counts as tap
-      const TAP_MAX_DISPLACEMENT = 0.025; // relative units; finger barely moved
+      const TAP_MAX_DURATION = 0.28;
+      const TAP_MAX_DISPLACEMENT = 0.025;
 
-      // ─── Dreamy palette for colored tap dots ───
       const PALETTE = [
-        [0.92, 0.62, 0.78], // pink lavender
-        [0.55, 0.78, 0.92], // cyan blue
-        [0.62, 0.88, 0.78], // mint
-        [0.96, 0.72, 0.55], // peach
-        [0.95, 0.88, 0.55], // lemon cream
-        [0.74, 0.68, 0.92], // periwinkle
-        [0.95, 0.68, 0.65], // coral
-        [0.68, 0.92, 0.86], // aqua
+        [0.92, 0.62, 0.78],
+        [0.55, 0.78, 0.92],
+        [0.62, 0.88, 0.78],
+        [0.96, 0.72, 0.55],
+        [0.95, 0.88, 0.55],
+        [0.74, 0.68, 0.92],
+        [0.95, 0.68, 0.65],
+        [0.68, 0.92, 0.86],
       ];
 
       function randomHue() {
@@ -584,7 +567,7 @@ void main() {
       }
 
       // ═══════════════════════════════════════════════════════════
-      //  PeerJS Connection — unchanged from working version
+      //  PeerJS Connection (unchanged)
       // ═══════════════════════════════════════════════════════════
       let peer = null;
       let conn = null;
@@ -940,6 +923,7 @@ void main() {
         if (!msg || !msg.type) return;
 
         if (msg.type === "down") {
+          const now = performance.now() / 1000;
           remoteActive.set(msg.id, {
             x: msg.x,
             y: msg.y,
@@ -949,15 +933,14 @@ void main() {
             targetR: msg.r,
             lastX: msg.x,
             lastY: msg.y,
-            lastSampleT: performance.now() / 1000,
             vx: 0,
             vy: 0,
             dwell: 0,
             stillX: msg.x,
             stillY: msg.y,
-            lastTrailX: msg.x,
-            lastTrailY: msg.y,
-            lastTrailT: performance.now() / 1000,
+            // trail head tracking — see emitTrail
+            trailHeadX: msg.x,
+            trailHeadY: msg.y,
           });
         } else if (msg.type === "move") {
           const existing = remoteActive.get(msg.id);
@@ -966,6 +949,7 @@ void main() {
             existing.targetY = msg.y;
             existing.targetR = msg.r;
           } else {
+            const now = performance.now() / 1000;
             remoteActive.set(msg.id, {
               x: msg.x,
               y: msg.y,
@@ -975,30 +959,21 @@ void main() {
               targetR: msg.r,
               lastX: msg.x,
               lastY: msg.y,
-              lastSampleT: performance.now() / 1000,
               vx: 0,
               vy: 0,
               dwell: 0,
               stillX: msg.x,
               stillY: msg.y,
-              lastTrailX: msg.x,
-              lastTrailY: msg.y,
-              lastTrailT: performance.now() / 1000,
+              trailHeadX: msg.x,
+              trailHeadY: msg.y,
             });
           }
         } else if (msg.type === "up") {
           const ex = remoteActive.get(msg.id);
           if (ex) {
-            // Detect tap on remote side too — we use local tap detection rules
-            const dur = performance.now() / 1000 - (ex.spawnT || 0);
-            const disp = Math.hypot(
-              ex.x - (ex.spawnX || ex.x),
-              ex.y - (ex.spawnY || ex.y),
-            );
             let hue = [0, 0, 0],
               hueAmt = 0;
             if (msg.tapHue) {
-              // remote already decided this was a colored tap
               hue = msg.tapHue;
               hueAmt = 1.0;
             }
@@ -1034,15 +1009,13 @@ void main() {
           radius: n.radius,
           lastX: n.x,
           lastY: n.y,
-          lastSampleT: now,
           vx: 0,
           vy: 0,
           dwell: 0,
           stillX: n.x,
           stillY: n.y,
-          lastTrailX: n.x,
-          lastTrailY: n.y,
-          lastTrailT: now,
+          trailHeadX: n.x,
+          trailHeadY: n.y,
           spawnT: now,
           spawnX: n.x,
           spawnY: n.y,
@@ -1129,7 +1102,6 @@ void main() {
         });
         localActive.delete(touchId);
 
-        // tell remote whether this was a tap, so they render the colored ghost too
         if (isTap) {
           sendMsg({ type: "up", id: touchId, tapHue: hue });
         } else {
@@ -1186,7 +1158,7 @@ void main() {
       });
 
       // ═══════════════════════════════════════════════════════════
-      //  Physics + Trail (with interpolation)
+      //  Physics + Trail (REWRITTEN — head always attached)
       // ═══════════════════════════════════════════════════════════
       function stepPoint(p, dt) {
         const dx = p.x - p.lastX;
@@ -1211,60 +1183,66 @@ void main() {
         p.lastY = p.y;
       }
 
-      // ─── Interpolated trail emission ───
-      // Instead of dropping one sample per frame at the current point, we
-      // drop multiple samples *along the path* from the last trail point to
-      // the current point, spaced by a fixed distance. This makes the trail
-      // uniformly dense regardless of finger speed — no more visible point chains.
+      // ─── Trail: head-attached interpolation ───
+      //
+      // The bug in the previous version was that emitTrail dropped samples
+      // from p.lastTrailX/Y up to *current* p.x/p.y, but then the main touch
+      // continued to be drawn as a separate point at the current position.
+      // Visually this made the trail "lag behind" the live touch.
+      //
+      // Fix: every frame, lay down a dense series of samples from the previous
+      // trail head all the way TO the current touch position, with NO gap.
+      // The current touch IS the most recent sample. Spacing is ~30% of touch
+      // radius (was 60%) so adjacent samples overlap heavily and look continuous.
+      //
+      // The main touch point is still rendered separately on top, but now
+      // because the trail extends fully up to (and including) the same position,
+      // the visual is one continuous stroke.
       function emitTrail(pool, p, now) {
-        // emission spacing in normalized screen units
-        const SPACING = Math.max(p.radius * 0.6, 0.006);
+        const SPACING = Math.max(p.radius * 0.3, 0.0035);
 
-        const dx = p.x - p.lastTrailX;
-        const dy = p.y - p.lastTrailY;
+        const dx = p.x - p.trailHeadX;
+        const dy = p.y - p.trailHeadY;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        // also allow time-based emission for dwell soaking
-        const dt = now - p.lastTrailT;
-
-        // if barely moving and not dwelling deeply, skip
-        if (dist < SPACING && p.dwell < 0.5 && dt < 0.05) return;
-
-        // dwell case: emit one sample at current position (soaking)
-        if (dist < SPACING && p.dwell >= 0.5) {
-          pool.push({
-            x: p.x,
-            y: p.y,
-            radius: p.radius * (0.7 + Math.min(p.dwell, 1.5) * 0.25),
-            birthT: now,
-            vx: 0,
-            vy: 0,
-          });
-          p.lastTrailT = now;
-          if (pool.length > 200) pool.shift();
+        // Dwell case: drop a sample at the current position to "soak in"
+        if (dist < SPACING) {
+          if (p.dwell >= 0.3) {
+            pool.push({
+              x: p.x,
+              y: p.y,
+              radius: p.radius * (0.7 + Math.min(p.dwell, 1.5) * 0.25),
+              birthT: now,
+              vx: 0,
+              vy: 0,
+            });
+            p.trailHeadX = p.x;
+            p.trailHeadY = p.y;
+          }
           return;
         }
 
-        // motion case: interpolate between last trail point and current
-        const steps = Math.min(Math.ceil(dist / SPACING), 12); // cap to avoid spam
+        // Motion case: lay samples densely from previous head to current position.
+        // Crucially we go all the way to the current position (i goes up to steps inclusive)
+        // so the trail is continuous with the live touch.
+        const steps = Math.min(Math.ceil(dist / SPACING), 30);
         for (let i = 1; i <= steps; i++) {
           const t = i / steps;
-          const sx = p.lastTrailX + dx * t;
-          const sy = p.lastTrailY + dy * t;
+          const sx = p.trailHeadX + dx * t;
+          const sy = p.trailHeadY + dy * t;
           pool.push({
             x: sx,
             y: sy,
-            radius: p.radius * (0.85 + Math.min(p.dwell, 1.0) * 0.15),
+            radius: p.radius * (0.88 + Math.min(p.dwell, 1.0) * 0.12),
             birthT: now,
             vx: p.vx * 0.3,
             vy: p.vy * 0.3,
           });
-          if (pool.length > 200) pool.shift();
+          if (pool.length > 280) pool.shift();
         }
 
-        p.lastTrailX = p.x;
-        p.lastTrailY = p.y;
-        p.lastTrailT = now;
+        p.trailHeadX = p.x;
+        p.trailHeadY = p.y;
       }
 
       function stepTrails(pool, now) {
@@ -1418,11 +1396,9 @@ void main() {
         gl.uniform1f(uTm, now / 1000);
         gl.uniform1f(uW, warmth);
 
-        // fade legacy fading points and grow them slightly (the "blooming" of a tap dot)
         for (let i = localFading.length - 1; i >= 0; i--) {
           const f = localFading[i];
           f.fadeAlpha -= 0.025;
-          // colored tap dots bloom outward more dramatically than ink
           const growRate = f.hueAmt > 0 ? 1.025 : 1.008;
           f.radius *= growRate;
           if (f.fadeAlpha <= 0) localFading.splice(i, 1);
@@ -1435,7 +1411,6 @@ void main() {
           if (f.fadeAlpha <= 0) remoteFading.splice(i, 1);
         }
 
-        // Pack slots
         const slots = [];
         const pushSlot = (p, kind, virtue, dwellOverride, hue, hueAmt) => {
           if (slots.length >= MAX_SLOTS) return;
@@ -1467,11 +1442,11 @@ void main() {
           slots.push({
             x: t.x,
             y: t.y,
-            radius: t.radius * (0.5 + lifeT * 0.5),
+            radius: t.radius * (0.55 + lifeT * 0.45),
             kind: 0,
             vx: t.vx,
             vy: t.vy,
-            virtue: 0.7 + (1.0 - lifeT) * 0.3,
+            virtue: 0.6 + (1.0 - lifeT) * 0.4,
             dwell: 0,
             hue: [0, 0, 0],
             hueAmt: 0,
@@ -1484,11 +1459,11 @@ void main() {
           slots.push({
             x: t.x,
             y: t.y,
-            radius: t.radius * (0.5 + lifeT * 0.5),
+            radius: t.radius * (0.55 + lifeT * 0.45),
             kind: 1,
             vx: t.vx,
             vy: t.vy,
-            virtue: 0.8 + (1.0 - lifeT) * 0.2,
+            virtue: 0.7 + (1.0 - lifeT) * 0.3,
             dwell: 0,
             hue: [0, 0, 0],
             hueAmt: 0,
