@@ -172,26 +172,35 @@ Touches are **Gaussian potential fields** with **fBm noise** distortion. Each fr
 
 ### Color state machine (`stepWarmth`)
 
-- Touches start as **black ink on paper** (warmth = 0)
-- **Cross-device merge** (touches at similar relative positions) → warmth climbs toward `+1` → **warm amber**
-- **Separation after merge** → warmth goes negative → **cool steel blue**
-- Transitions pass through a **desaturated dusk-grey midtone**, never through pure black
-- All hands lifted → warmth eases back toward 0
-- **Brief taps** leave behind colored dots (random hue from `PALETTE`) — fleeting, each one unique
+Presence-based, not merge-based:
+
+- `warmth` ranges **`0` (solo, cool blue) ↔ `1` (duet, warm orange)**
+- `target = 1` when **both sides are touching** (`localActive.size > 0 && remoteActive.size > 0`); otherwise `target = 0`
+- Eases toward `target` at ~500ms time constant (`dt * 2.5`)
+- **No black/grey midtone** — direct cool→warm interpolation in the shader (`mapInk`)
+- **Brief taps** still leave colored dots (random hue from `PALETTE`) — independent of the warmth machine
+- The `merged` flag (cross-device touches at similar positions) is still computed, but **only drives the state-label text** (`相 遇 · MEET`); it no longer affects color.
+
+### Cross-device size consistency
+
+- Touch radius normalization in `norm()` divides by **`r.height`**, not `r.width` — because the shader's pos space is normalized so 1 unit = canvas height. Dividing by width caused iPad/iPhone discrepancies (same physical finger appeared smaller on the wider device).
+- When `t.radiusX` is missing or absurdly small (iPad often reports `0`), it falls back to `FINGER_PX = 28` CSS pixels.
 
 ### Hot spots in the code
 
 - **`MAX_SLOTS = 32`** — WebGL uniform array size. If you "need more slots," instead consider whether trail samples should age out faster, not raising the cap.
-- **`emitTrail` function** — head-attached trail interpolation. An earlier version had a "trail lags behind live touch" bug; the current implementation lays samples from the previous trail head all the way TO the current touch position each frame. **Do not break this invariant.**
-- **`mapInk` function in the shader** — the warm/cool/midtone color hierarchy is intricate. Small changes cascade.
+- **`emitTrail` function** — head-attached trail interpolation. An earlier version had a "trail lags behind live touch" bug; the current implementation lays samples from the previous trail head all the way TO the current touch position each frame. **Do not break this invariant.** `SPACING` is `radius * 0.2` for dense overlap; `0.3` left visible gaps on fast strokes.
+- **`mapInk` function in the shader** — direct `mix(coolG, warmG, w)` between the cool steel-blue gradient (`C0/C1/C2`) and the warm amber gradient (`W0/W1/W2`). No midtone path.
 - **`virtue` parameter** — represents real-vs-virtual / local-vs-remote. Higher virtue = softer edges + more noise displacement.
+- **Velocity LP filter in `stepPoint`**: `dt * 25` (was `dt * 12`). Tightened to make the visual mark follow the finger more closely. Going much higher amplifies jitter.
+- **Remote position LP**: `dt * 18` for x/y, `dt * 12` for radius. Tightened from `dt * 12 / dt * 8` for less perceived lag while still smoothing network jitter.
 
 ### Open design questions (do not auto-resolve)
 
 These are surfaced from user testing and remain unresolved:
 - The definition of "low pressure" interaction has conflicting interpretations
 - Whether to add an **asynchronous trace-leaving mode** (surprise via residue, not just synchronous coincidence)
-- How the color state machine should evolve to support a **friendship** relationship framing rather than the original couple/intimate framing
+- ~~How the color state machine should evolve to support a **friendship** relationship framing~~ — **Resolved 2026-05-10**: replaced merge-driven warmth with presence-based blue (solo) ↔ orange (duet). The "couple/synchrony-required" semantic is gone; "just being there together" now drives the warm state.
 
 ---
 

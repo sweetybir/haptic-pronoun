@@ -354,10 +354,6 @@ const vec3 C0 = vec3(0.08, 0.10, 0.20);
 const vec3 C1 = vec3(0.22, 0.36, 0.54);
 const vec3 C2 = vec3(0.58, 0.72, 0.82);
 
-const vec3 MID_EDGE = vec3(0.18, 0.15, 0.19);
-const vec3 MID_MID  = vec3(0.40, 0.36, 0.42);
-const vec3 MID_CORE = vec3(0.72, 0.66, 0.70);
-
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
@@ -374,23 +370,16 @@ float fbm(vec2 p) {
 }
 
 vec3 mapInk(float depth, float w, float remoteRatio, vec3 hueColor, float hueAmt) {
+  // w in [0,1]: 0 = solo (cool blue), 1 = duet (warm orange).
+  // Direct cool→warm interpolation with no midtone — color is always present.
   vec3 warmG = mix(W0, W1, smoothstep(0.0, 0.45, depth));
   warmG = mix(warmG, W2, smoothstep(0.35, 1.0, depth));
 
   vec3 coolG = mix(C0, C1, smoothstep(0.0, 0.45, depth));
   coolG = mix(coolG, C2, smoothstep(0.35, 1.0, depth));
 
-  vec3 midG = mix(MID_EDGE, MID_MID, smoothstep(0.0, 0.45, depth));
-  midG = mix(midG, MID_CORE, smoothstep(0.35, 1.0, depth));
+  vec3 colored = mix(coolG, warmG, clamp(w, 0.0, 1.0));
 
-  vec3 colored;
-  if (w >= 0.0) {
-    colored = mix(midG, warmG, w);
-  } else {
-    colored = mix(midG, coolG, -w);
-  }
-
-  float absW = abs(w);
   vec3 baseInk = mix(INK, INK_REMOTE, remoteRatio);
 
   vec3 hueDeep = hueColor * 0.55;
@@ -398,7 +387,8 @@ vec3 mapInk(float depth, float w, float remoteRatio, vec3 hueColor, float hueAmt
   vec3 hueGrad = mix(hueDeep, hueLight, smoothstep(0.0, 1.0, depth));
   baseInk = mix(baseInk, hueGrad, hueAmt);
 
-  return mix(baseInk, colored, smoothstep(0.0, 0.3, absW) * (1.0 - hueAmt * 0.7));
+  // Always show the colored ink; tap-hue marks override via hueAmt.
+  return mix(baseInk, colored, 1.0 - hueAmt * 0.7);
 }
 
 void main() {
@@ -564,11 +554,12 @@ void main() {
       const connDot = document.getElementById("connDot");
       const exitBtn = document.getElementById("exitBtn");
 
+      // warmth in [0, 1]: 0 = solo (blue), 1 = duet (orange).
+      // Driven by presence count of active sides, not by cross-merge proximity.
+      // `merged` is kept only for the state-label text; it no longer drives color.
       let warmth = 0,
         target = 0,
-        merged = false,
-        wasMerged = false,
-        mergeT = 0;
+        merged = false;
 
       const TRAIL_LIFETIME = 0.55;
       const BASE_MIN_RADIUS = 0.006;
@@ -1021,9 +1012,21 @@ void main() {
       function norm(t, r) {
         const x = (t.clientX - r.left) / r.width;
         const y = 1 - (t.clientY - r.top) / r.height;
-        const rx = (t.radiusX || 8) / r.width;
-        const ry = (t.radiusY || 8) / r.height;
-        return { x, y, radius: Math.max(Math.sqrt(rx * ry), BASE_MIN_RADIUS) };
+        // Cross-device size consistency: the shader's pos space is normalized
+        // so that 1 unit = canvas height. Dividing radius by r.height gives
+        // a size that maps to the same physical CSS-pixel diameter on every
+        // device & orientation (was: divided by r.width — caused iPad/iPhone
+        // discrepancy). Fall back to a sensible fingertip when radiusX is
+        // missing or unrealistically small (iPad often reports 0).
+        const FINGER_PX = 28;
+        const rx = t.radiusX > 4 ? t.radiusX : FINGER_PX;
+        const ry = t.radiusY > 4 ? t.radiusY : FINGER_PX;
+        const px = Math.sqrt(rx * ry);
+        return {
+          x,
+          y,
+          radius: Math.max(px / r.height, BASE_MIN_RADIUS),
+        };
       }
 
       function spawnLocal(id, n) {
@@ -1190,8 +1193,8 @@ void main() {
         const dy = p.y - p.lastY;
         const instVx = dx / Math.max(dt, 0.0001);
         const instVy = dy / Math.max(dt, 0.0001);
-        p.vx += (instVx - p.vx) * Math.min(1, dt * 12);
-        p.vy += (instVy - p.vy) * Math.min(1, dt * 12);
+        p.vx += (instVx - p.vx) * Math.min(1, dt * 25);
+        p.vy += (instVy - p.vy) * Math.min(1, dt * 25);
 
         const stillDx = p.x - p.stillX;
         const stillDy = p.y - p.stillY;
@@ -1224,7 +1227,7 @@ void main() {
       // because the trail extends fully up to (and including) the same position,
       // the visual is one continuous stroke.
       function emitTrail(pool, p, now) {
-        const SPACING = Math.max(p.radius * 0.3, 0.0035);
+        const SPACING = Math.max(p.radius * 0.2, 0.0025);
 
         const dx = p.x - p.trailHeadX;
         const dy = p.y - p.trailHeadY;
@@ -1354,24 +1357,11 @@ void main() {
       }
 
       function stepWarmth(dt) {
-        if (merged) {
-          mergeT += dt;
-          wasMerged = true;
-          if (mergeT > 1.0) target = Math.min(1, target + 0.22 * dt);
-        } else if (
-          wasMerged &&
-          (localActive.size > 0 || remoteActive.size > 0)
-        ) {
-          target = Math.max(-1, target - 0.35 * dt);
-          mergeT = Math.max(0, mergeT - dt * 0.6);
-        } else if (localActive.size === 0 && remoteActive.size === 0) {
-          target += (0 - target) * 0.18 * dt;
-          mergeT = Math.max(0, mergeT - dt * 0.4);
-          if (mergeT <= 0.01) wasMerged = false;
-        } else {
-          mergeT = Math.max(0, mergeT - dt * 0.8);
-        }
-        warmth += (target - warmth) * Math.min(1, dt * 2.2);
+        // Presence-based color: both sides touching = duet (1, orange);
+        // anything less = solo (0, blue). ~500ms ease between states.
+        const bothTouching = localActive.size > 0 && remoteActive.size > 0;
+        target = bothTouching ? 1 : 0;
+        warmth += (target - warmth) * Math.min(1, dt * 2.5);
       }
 
       function resize() {
@@ -1399,9 +1389,9 @@ void main() {
         }
 
         for (const r of remoteActive.values()) {
-          r.x += (r.targetX - r.x) * Math.min(1, dt * 12);
-          r.y += (r.targetY - r.y) * Math.min(1, dt * 12);
-          r.radius += (r.targetR - r.radius) * Math.min(1, dt * 8);
+          r.x += (r.targetX - r.x) * Math.min(1, dt * 18);
+          r.y += (r.targetY - r.y) * Math.min(1, dt * 18);
+          r.radius += (r.targetR - r.radius) * Math.min(1, dt * 12);
           stepPoint(r, dt);
           emitTrail(remoteTrails, r, nowS);
         }
