@@ -346,13 +346,18 @@ const vec3 PAPER = vec3(0.949, 0.937, 0.914);
 const vec3 INK   = vec3(0.055, 0.047, 0.043);
 const vec3 INK_REMOTE = vec3(0.060, 0.058, 0.068);
 
-const vec3 W0 = vec3(0.26, 0.11, 0.07);
-const vec3 W1 = vec3(0.72, 0.34, 0.14);
-const vec3 W2 = vec3(0.94, 0.74, 0.36);
+// Orange (duet) gradient: edge → mid → core. Edge brightened from the
+// original earth-amber so even sparse marks read as "orange" once mixed
+// with cream paper at low alpha. Core stays close to the original golden
+// highlight to preserve depth feel.
+const vec3 W0 = vec3(0.82, 0.45, 0.18);
+const vec3 W1 = vec3(0.92, 0.60, 0.25);
+const vec3 W2 = vec3(0.96, 0.78, 0.40);
 
-const vec3 C0 = vec3(0.08, 0.10, 0.20);
-const vec3 C1 = vec3(0.22, 0.36, 0.54);
-const vec3 C2 = vec3(0.58, 0.72, 0.82);
+// Cool (solo) gradient: same brightening principle for blue.
+const vec3 C0 = vec3(0.18, 0.40, 0.68);
+const vec3 C1 = vec3(0.32, 0.55, 0.78);
+const vec3 C2 = vec3(0.58, 0.75, 0.88);
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -434,8 +439,8 @@ void main() {
 
     float d = length(delta);
 
-    float sigMul = mix(1.15, 1.4, kind);
-    float dwellBoost = 1.0 + smoothstep(0.0, 2.5, dwell) * 0.35;
+    float sigMul = mix(0.95, 1.15, kind);
+    float dwellBoost = 1.0 + smoothstep(0.0, 2.5, dwell) * 0.15;
     float sig = r * sigMul * dwellBoost;
     float g = exp(-d*d/(2.0*sig*sig));
 
@@ -1018,7 +1023,7 @@ void main() {
         // device & orientation (was: divided by r.width — caused iPad/iPhone
         // discrepancy). Fall back to a sensible fingertip when radiusX is
         // missing or unrealistically small (iPad often reports 0).
-        const FINGER_PX = 28;
+        const FINGER_PX = 20;
         const rx = t.radiusX > 4 ? t.radiusX : FINGER_PX;
         const ry = t.radiusY > 4 ? t.radiusY : FINGER_PX;
         const px = Math.sqrt(rx * ry);
@@ -1061,17 +1066,75 @@ void main() {
         if (disp > ex.maxDisp) ex.maxDisp = disp;
       }
 
+      // ─── PointerEvent path (replaces touchstart/touchmove) ───
+      // Why pointer events instead of touch events:
+      //   1. getCoalescedEvents() exposes sub-frame input samples — at 120Hz
+      //      iPad / Apple Pencil there are 4-8 input samples per rAF frame.
+      //      Touch events collapse them; pointer events let us see all of them.
+      //   2. We feed every sub-frame sample into emitTrail right inside the
+      //      handler, not just at rAF, so the trail truly tracks the finger.
+      // Filter on pointerType so the existing mouse listeners still work for
+      // desktop testing without double-firing.
+      function pointerToTouchShape(e) {
+        return {
+          clientX: e.clientX,
+          clientY: e.clientY,
+          radiusX: e.width ? e.width / 2 : 0,
+          radiusY: e.height ? e.height / 2 : 0,
+        };
+      }
+
       canvas.addEventListener(
-        "touchstart",
+        "pointerdown",
         (e) => {
+          if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+          e.preventDefault();
+          try {
+            canvas.setPointerCapture(e.pointerId);
+          } catch (_) {}
+          const r = canvas.getBoundingClientRect();
+          const n = norm(pointerToTouchShape(e), r);
+          spawnLocal(e.pointerId, n);
+          sendMsg({
+            type: "down",
+            id: e.pointerId,
+            x: n.x,
+            y: n.y,
+            r: n.radius,
+          });
+          refreshState();
+        },
+        { passive: false },
+      );
+
+      canvas.addEventListener(
+        "pointermove",
+        (e) => {
+          if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+          if (!localActive.has(e.pointerId)) return;
           e.preventDefault();
           const r = canvas.getBoundingClientRect();
-          for (const t of e.changedTouches) {
-            const n = norm(t, r);
-            spawnLocal(t.identifier, n);
+          const samples = e.getCoalescedEvents
+            ? e.getCoalescedEvents()
+            : [e];
+          // Fallback: some browsers return [] from getCoalescedEvents
+          const list = samples.length ? samples : [e];
+          const nowS = performance.now() / 1000;
+          const p = localActive.get(e.pointerId);
+          for (const ev of list) {
+            const n = norm(pointerToTouchShape(ev), r);
+            // Apply position immediately so trail/visual track the finger
+            p.x = n.x;
+            p.y = n.y;
+            p.radius = n.radius;
+            const disp = Math.hypot(n.x - p.spawnX, n.y - p.spawnY);
+            if (disp > p.maxDisp) p.maxDisp = disp;
+            // Sub-frame trail emission: each coalesced sample lays its own
+            // trail segment, so the visible stroke matches the actual path.
+            emitTrail(localTrails, p, nowS);
             sendMsg({
-              type: "down",
-              id: t.identifier,
+              type: "move",
+              id: e.pointerId,
               x: n.x,
               y: n.y,
               r: n.radius,
@@ -1082,28 +1145,17 @@ void main() {
         { passive: false },
       );
 
-      canvas.addEventListener(
-        "touchmove",
-        (e) => {
-          e.preventDefault();
-          const r = canvas.getBoundingClientRect();
-          for (const t of e.changedTouches) {
-            if (localActive.has(t.identifier)) {
-              const n = norm(t, r);
-              updateLocal(t.identifier, n);
-              sendMsg({
-                type: "move",
-                id: t.identifier,
-                x: n.x,
-                y: n.y,
-                r: n.radius,
-              });
-            }
-          }
-          refreshState();
-        },
-        { passive: false },
-      );
+      canvas.addEventListener("pointerup", (e) => {
+        if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+        liftLocal(e.pointerId);
+        refreshState();
+      });
+
+      canvas.addEventListener("pointercancel", (e) => {
+        if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+        liftLocal(e.pointerId);
+        refreshState();
+      });
 
       function liftLocal(touchId) {
         const ex = localActive.get(touchId);
@@ -1137,20 +1189,7 @@ void main() {
         }
       }
 
-      canvas.addEventListener(
-        "touchend",
-        (e) => {
-          e.preventDefault();
-          for (const t of e.changedTouches) liftLocal(t.identifier);
-          refreshState();
-        },
-        { passive: false },
-      );
-
-      canvas.addEventListener("touchcancel", (e) => {
-        for (const t of e.changedTouches) liftLocal(t.identifier);
-        refreshState();
-      });
+      // touchend/touchcancel removed — pointerup/pointercancel above cover lift
 
       let mDown = false;
       canvas.addEventListener("mousedown", (e) => {
@@ -1233,22 +1272,10 @@ void main() {
         const dy = p.y - p.trailHeadY;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        // Dwell case: drop a sample at the current position to "soak in"
-        if (dist < SPACING) {
-          if (p.dwell >= 0.3) {
-            pool.push({
-              x: p.x,
-              y: p.y,
-              radius: p.radius * (0.7 + Math.min(p.dwell, 1.5) * 0.25),
-              birthT: now,
-              vx: 0,
-              vy: 0,
-            });
-            p.trailHeadX = p.x;
-            p.trailHeadY = p.y;
-          }
-          return;
-        }
+        // Stationary: don't emit any extra samples. The "soak in" growth
+        // contributed to the draggy feel. Trail keeps whatever was already
+        // laid; the live touch is rendered separately.
+        if (dist < SPACING) return;
 
         // Motion case: lay samples densely from previous head to current position.
         // Crucially we go all the way to the current position (i goes up to steps inclusive)
