@@ -52,7 +52,7 @@ Shared visual language across all works:
 |---|---|
 | Background | `#f2efe9` (paper cream) — NOT pure white |
 | Ink | very dark warm values like `rgba(15,10,8,...)` — NOT pure black |
-| Typography | `'Bricolage Grotesque', 'Songti SC', 'STSong', 'SimSun', serif` — Bricolage loaded from Google Fonts CDN (variable axes opsz/wght). EN/Latin → Bricolage; CN/CJK → Songti chain. No italic axis on Google Fonts → `font-style: italic` is browser-synthesized oblique. |
+| Typography | `'Bricolage Grotesque', '上首文正体', 'Songti SC', 'STSong', 'SimSun', serif` — Bricolage from Google Fonts CDN (axes opsz/wght); 上首文正体 self-hosted TTF at repo root (`No.7-上首文正体.ttf`, 1.9MB), loaded via `@font-face`. EN/Latin → Bricolage; CN/CJK → 上首文正体, fallback to Songti chain. Single weight only for 上首文正体 — bold is browser-synthesized. No italic axis on Bricolage → `font-style: italic` is also synthesized. |
 | UI text size | 9–11px |
 | UI letter-spacing | 0.15–0.25em |
 | UI opacity | 0.3–0.5 (deliberately faded) |
