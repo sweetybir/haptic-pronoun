@@ -1,0 +1,1162 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>声音代词 · VOCAL PRONOUN</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #f2efe9;
+        font-family: "Songti SC", "STSong", "SimSun", "Times New Roman", serif;
+        color: #1a1a1a;
+        user-select: none;
+        -webkit-user-select: none;
+        position: fixed;
+      }
+      canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #f2efe9;
+      }
+
+      /* Paper grain (matches haptic) */
+      .paper-grain {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2;
+        mix-blend-mode: multiply;
+        opacity: 0.06;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        background-size: 256px 256px;
+      }
+
+      .ui-layer {
+        position: fixed;
+        z-index: 3;
+        pointer-events: none;
+        color: #1a1a1a;
+      }
+      .title {
+        top: 24px;
+        left: 24px;
+        font-size: 11px;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        opacity: 0.32;
+      }
+      .state-label {
+        top: 24px;
+        right: 24px;
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-align: right;
+        opacity: 0.32;
+      }
+      .marker {
+        left: 24px;
+        font-size: 9px;
+        letter-spacing: 0.18em;
+        opacity: 0.28;
+      }
+      .marker-self {
+        top: calc(50% - 64px);
+      }
+      .marker-other {
+        top: calc(50% + 56px);
+      }
+
+      /* ── Pairing overlay ────────────── */
+      .pair-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        background: #f2efe9;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        transition:
+          opacity 1.2s ease,
+          visibility 1.2s ease;
+      }
+      .pair-overlay.hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      /* Portal link (back to series index) */
+      .portal-link {
+        position: absolute;
+        top: 24px;
+        right: 24px;
+        font-size: 9px;
+        letter-spacing: 0.2em;
+        color: #1a1a1a;
+        opacity: 0.4;
+        text-transform: uppercase;
+        text-decoration: none;
+        pointer-events: auto;
+        padding: 8px;
+        font-family: inherit;
+        z-index: 11;
+      }
+      .portal-link:active {
+        opacity: 0.7;
+      }
+
+      .pair-title {
+        font-size: 13px;
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+        color: #1a1a1a;
+        opacity: 0.5;
+        margin-bottom: 12px;
+      }
+      .pair-tagline {
+        font-size: 11px;
+        letter-spacing: 0.15em;
+        color: #1a1a1a;
+        opacity: 0.4;
+        line-height: 2;
+        text-align: center;
+        margin-bottom: 56px;
+        max-width: 280px;
+      }
+
+      .pair-mode {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        max-width: 320px;
+        width: 100%;
+      }
+
+      .pair-button {
+        background: none;
+        border: 1px solid rgba(26, 26, 26, 0.25);
+        color: #1a1a1a;
+        padding: 14px 28px;
+        font-family: inherit;
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.4s ease;
+        width: 100%;
+        pointer-events: auto;
+      }
+      .pair-button:hover,
+      .pair-button:active {
+        background: rgba(26, 26, 26, 0.05);
+        border-color: rgba(26, 26, 26, 0.5);
+      }
+      .pair-button:disabled {
+        opacity: 0.3;
+        pointer-events: none;
+      }
+
+      .room-code {
+        font-size: 42px;
+        letter-spacing: 0.3em;
+        color: #1a1a1a;
+        opacity: 0.85;
+        padding: 16px 0;
+      }
+
+      .pair-hint {
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        color: #1a1a1a;
+        opacity: 0.4;
+        text-align: center;
+        line-height: 1.8;
+        text-transform: uppercase;
+        min-height: 14px;
+        transition:
+          opacity 0.4s ease,
+          color 0.4s ease;
+      }
+      .pair-hint.error {
+        color: #8a3a2a;
+        opacity: 0.7;
+      }
+      .pair-hint.success {
+        color: #2a5a3a;
+        opacity: 0.7;
+      }
+
+      .code-input {
+        background: none;
+        border: none;
+        border-bottom: 1px solid rgba(26, 26, 26, 0.3);
+        color: #1a1a1a;
+        font-family: inherit;
+        font-size: 32px;
+        letter-spacing: 0.25em;
+        text-align: center;
+        width: 100%;
+        padding: 12px 0;
+        outline: none;
+        text-transform: uppercase;
+        pointer-events: auto;
+      }
+      .code-input:focus {
+        border-bottom-color: rgba(26, 26, 26, 0.7);
+      }
+
+      .divider {
+        font-size: 9px;
+        letter-spacing: 0.3em;
+        color: #1a1a1a;
+        opacity: 0.3;
+        margin: 8px 0;
+        text-transform: uppercase;
+      }
+
+      .back-link {
+        position: absolute;
+        top: 24px;
+        left: 24px;
+        font-size: 9px;
+        letter-spacing: 0.2em;
+        color: #1a1a1a;
+        opacity: 0.4;
+        text-transform: uppercase;
+        cursor: pointer;
+        pointer-events: auto;
+        padding: 8px;
+      }
+
+      .conn-dot {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #1a1a1a;
+        opacity: 0.2;
+        z-index: 3;
+        transition: opacity 0.6s ease;
+      }
+      .conn-dot.connected {
+        opacity: 0.6;
+      }
+
+      .exit-btn {
+        position: fixed;
+        bottom: 18px;
+        left: 24px;
+        z-index: 4;
+        font-family: inherit;
+        font-size: 10px;
+        letter-spacing: 0.2em;
+        color: #1a1a1a;
+        opacity: 0;
+        background: none;
+        border: none;
+        padding: 10px 14px 10px 0;
+        cursor: pointer;
+        text-transform: uppercase;
+        transition: opacity 0.8s ease;
+        pointer-events: none;
+      }
+      .exit-btn.visible {
+        opacity: 0.4;
+        pointer-events: auto;
+      }
+      .exit-btn:active {
+        opacity: 0.7;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div class="paper-grain"></div>
+
+    <div class="ui-layer title">声音代词 · TRACE</div>
+    <div class="ui-layer state-label" id="stateLabel">独 · ALONE</div>
+    <div class="ui-layer marker marker-self hidden" id="markerSelf">
+      我 ↑ SELF
+    </div>
+    <div class="ui-layer marker marker-other hidden" id="markerOther">
+      彼 ↓ OTHER
+    </div>
+    <div class="conn-dot" id="connDot"></div>
+
+    <button class="exit-btn" id="exitBtn">离 · LEAVE</button>
+
+    <div class="pair-overlay" id="pairOverlay">
+      <a class="portal-link" href="./">← 代 词</a>
+      <div class="back-link" id="backLink" style="display: none">← 返 回</div>
+      <div class="pair-title">声 音 代 词</div>
+      <div class="pair-tagline">沉 默 · 是 让 对 方 显 影 的 条 件</div>
+
+      <div class="pair-mode" id="modeSelect">
+        <button class="pair-button" id="btnHost">创建房间 · HOST</button>
+        <div class="divider">— 或 —</div>
+        <button class="pair-button" id="btnJoin">加入房间 · JOIN</button>
+      </div>
+
+      <div class="pair-mode" id="hostView" style="display: none">
+        <div class="pair-hint">告 诉 朋 友 这 个 代 号</div>
+        <div class="room-code" id="roomCode">····</div>
+        <div class="pair-hint" id="hostStatus">准 备 中</div>
+      </div>
+
+      <div class="pair-mode" id="joinView" style="display: none">
+        <div class="pair-hint">输 入 朋 友 的 代 号</div>
+        <input
+          class="code-input"
+          id="codeInput"
+          maxlength="4"
+          inputmode="text"
+          autocapitalize="characters"
+          placeholder="····"
+        />
+        <button class="pair-button" id="btnConnect">接 入 · CONNECT</button>
+        <div class="pair-hint" id="joinStatus">&nbsp;</div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script>
+      "use strict";
+
+      // ═══════════════════════════════════════════════════════════
+      //  CONFIG
+      // ═══════════════════════════════════════════════════════════
+      const TIMELINE_SEC = 8;
+      const SAMPLE_HZ = 30;
+      const SEND_HZ = 25;
+      const VAD_ON = 0.02;
+      const VAD_OFF = 0.012;
+      const VAD_END_MS = 700;
+      const VAD_START_F = 2;
+      const AMPLITUDE = 95;
+      const PITCH_LO_HZ = 80;
+      const PITCH_HI_HZ = 500;
+
+      const ROOM_PREFIX = "vp-";
+
+      const PEER_CONFIG = {
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun.cloudflare.com:3478" },
+            {
+              urls: "turn:openrelay.metered.ca:80",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+            {
+              urls: "turn:openrelay.metered.ca:443",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+            {
+              urls: "turn:openrelay.metered.ca:443?transport=tcp",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+          ],
+          iceCandidatePoolSize: 10,
+        },
+      };
+
+      // ═══════════════════════════════════════════════════════════
+      //  STATE
+      // ═══════════════════════════════════════════════════════════
+      let peer = null,
+        conn = null;
+      let isHost = false;
+      let isConnected = false;
+      let joinTimeout = null,
+        hostTimeout = null,
+        iceMonitorInterval = null;
+
+      let audioCtx, analyser, micStream;
+      let timeBuf, freqBuf;
+
+      const local = {
+        active: false,
+        vol: 0,
+        pitch: 0.5,
+        tremor: 0,
+        _on: 0,
+        _silSince: 0,
+      };
+      const remote = { active: false, vol: 0, pitch: 0.5, tremor: 0, _seen: 0 };
+
+      let frames = [];
+      let lastSampleT = 0;
+      let lastSendT = 0;
+      const volHist = [];
+
+      // ═══════════════════════════════════════════════════════════
+      //  CANVAS
+      // ═══════════════════════════════════════════════════════════
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      let W = 0,
+        H = 0,
+        DPR = 1;
+      let grainCanvas = null;
+
+      function resize() {
+        DPR = Math.min(window.devicePixelRatio || 1, 2);
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = Math.floor(W * DPR);
+        canvas.height = Math.floor(H * DPR);
+        canvas.style.width = W + "px";
+        canvas.style.height = H + "px";
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        makeGrain();
+      }
+      window.addEventListener("resize", resize);
+      window.addEventListener("orientationchange", () =>
+        setTimeout(resize, 200),
+      );
+
+      function makeGrain() {
+        grainCanvas = document.createElement("canvas");
+        grainCanvas.width = 240;
+        grainCanvas.height = 240;
+        const g = grainCanvas.getContext("2d");
+        const id = g.createImageData(240, 240);
+        for (let i = 0; i < id.data.length; i += 4) {
+          const r = Math.random();
+          if (r < 0.06) {
+            id.data[i] =
+              id.data[i + 1] =
+              id.data[i + 2] =
+                30 + Math.random() * 60;
+            id.data[i + 3] = 30 + Math.random() * 50;
+          } else if (r < 0.14) {
+            id.data[i] = 200 + Math.random() * 40;
+            id.data[i + 1] = 195 + Math.random() * 30;
+            id.data[i + 2] = 175 + Math.random() * 25;
+            id.data[i + 3] = 60;
+          } else {
+            id.data[i + 3] = 0;
+          }
+        }
+        g.putImageData(id, 0, 0);
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      //  DOM REFS
+      // ═══════════════════════════════════════════════════════════
+      const overlay = document.getElementById("pairOverlay");
+      const modeSelect = document.getElementById("modeSelect");
+      const hostView = document.getElementById("hostView");
+      const joinView = document.getElementById("joinView");
+      const roomCodeEl = document.getElementById("roomCode");
+      const hostStatusEl = document.getElementById("hostStatus");
+      const joinStatusEl = document.getElementById("joinStatus");
+      const codeInput = document.getElementById("codeInput");
+      const btnConnect = document.getElementById("btnConnect");
+      const backLink = document.getElementById("backLink");
+      const stateEl = document.getElementById("stateLabel");
+      const connDot = document.getElementById("connDot");
+      const exitBtn = document.getElementById("exitBtn");
+      const markerSelf = document.getElementById("markerSelf");
+      const markerOther = document.getElementById("markerOther");
+
+      // ═══════════════════════════════════════════════════════════
+      //  PAIRING (mirrors haptic.html structure)
+      // ═══════════════════════════════════════════════════════════
+      function genCode() {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        let s = "";
+        for (let i = 0; i < 4; i++)
+          s += chars[Math.floor(Math.random() * chars.length)];
+        return s;
+      }
+
+      function setHint(el, text, cls) {
+        el.textContent = text;
+        el.classList.remove("error", "success");
+        if (cls) el.classList.add(cls);
+      }
+
+      function teardownPeer() {
+        if (joinTimeout) {
+          clearTimeout(joinTimeout);
+          joinTimeout = null;
+        }
+        if (hostTimeout) {
+          clearTimeout(hostTimeout);
+          hostTimeout = null;
+        }
+        if (iceMonitorInterval) {
+          clearInterval(iceMonitorInterval);
+          iceMonitorInterval = null;
+        }
+        if (conn) {
+          try {
+            conn.close();
+          } catch (e) {}
+          conn = null;
+        }
+        if (peer && !peer.destroyed) {
+          try {
+            peer.destroy();
+          } catch (e) {}
+        }
+        peer = null;
+        isConnected = false;
+        connDot.classList.remove("connected");
+        exitBtn.classList.remove("visible");
+      }
+
+      function resetToModeSelect() {
+        teardownPeer();
+        hostView.style.display = "none";
+        joinView.style.display = "none";
+        modeSelect.style.display = "flex";
+        backLink.style.display = "none";
+        btnConnect.disabled = false;
+        setHint(joinStatusEl, "\u00A0", null);
+        setHint(hostStatusEl, "准 备 中", null);
+        roomCodeEl.textContent = "····";
+        codeInput.value = "";
+      }
+
+      function showPairingAgain() {
+        teardownPeer();
+        overlay.classList.remove("hidden");
+        markerSelf.classList.add("hidden");
+        markerOther.classList.add("hidden");
+        resetToModeSelect();
+        // also stop mic
+        try {
+          if (micStream) micStream.getTracks().forEach((t) => t.stop());
+        } catch (e) {}
+        try {
+          if (audioCtx) audioCtx.close();
+        } catch (e) {}
+        micStream = null;
+        audioCtx = null;
+        analyser = null;
+      }
+
+      backLink.addEventListener("click", resetToModeSelect);
+
+      document.getElementById("btnHost").addEventListener("click", () => {
+        modeSelect.style.display = "none";
+        hostView.style.display = "flex";
+        backLink.style.display = "block";
+        startHost();
+      });
+
+      document.getElementById("btnJoin").addEventListener("click", () => {
+        modeSelect.style.display = "none";
+        joinView.style.display = "flex";
+        backLink.style.display = "block";
+        setTimeout(() => codeInput.focus(), 100);
+      });
+
+      btnConnect.addEventListener("click", () => {
+        const code = codeInput.value.trim().toUpperCase();
+        if (code.length !== 4) {
+          setHint(joinStatusEl, "代 号 应 为 四 位", "error");
+          return;
+        }
+        startJoin(code);
+      });
+
+      codeInput.addEventListener("input", (e) => {
+        e.target.value = e.target.value.toUpperCase();
+      });
+      codeInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") btnConnect.click();
+      });
+
+      exitBtn.addEventListener("click", () => {
+        if (conn && isConnected) {
+          try {
+            conn.send({ type: "bye" });
+          } catch (e) {}
+        }
+        setTimeout(showPairingAgain, 120);
+      });
+
+      function startIceMonitor(statusEl) {
+        if (iceMonitorInterval) clearInterval(iceMonitorInterval);
+        iceMonitorInterval = setInterval(() => {
+          if (!conn || !conn.peerConnection) return;
+          const pc = conn.peerConnection;
+          const state = pc.iceConnectionState;
+          if (isConnected) {
+            clearInterval(iceMonitorInterval);
+            iceMonitorInterval = null;
+            return;
+          }
+          if (state === "new" || state === "checking") {
+            setHint(statusEl, "协 商 中 · " + state.toUpperCase(), null);
+          } else if (state === "connected" || state === "completed") {
+            setHint(statusEl, "通 道 已 通", "success");
+          } else if (state === "failed") {
+            setHint(statusEl, "ICE 失 败 · 网 络 不 通", "error");
+          } else if (state === "disconnected") {
+            setHint(statusEl, "信 号 不 稳", "error");
+          }
+        }, 500);
+      }
+
+      function startHost(retry = 0) {
+        isHost = true;
+        const code = genCode();
+        const peerId = ROOM_PREFIX + code;
+        roomCodeEl.textContent = code;
+        setHint(hostStatusEl, "准 备 中", null);
+        peer = new Peer(peerId, PEER_CONFIG);
+        peer.on("open", () => setHint(hostStatusEl, "等 待 接 入", null));
+        peer.on("connection", (c) => {
+          conn = c;
+          setHint(hostStatusEl, "正 在 建 立", null);
+          startIceMonitor(hostStatusEl);
+          hostTimeout = setTimeout(() => {
+            if (!isConnected) {
+              setHint(hostStatusEl, "通 道 未 建 立 · 请 朋 友 重 试", "error");
+              try {
+                c.close();
+              } catch (e) {}
+              conn = null;
+            }
+          }, 20000);
+          setupConn();
+        });
+        peer.on("error", (err) => {
+          if (err.type === "unavailable-id" && retry < 3) {
+            try {
+              peer.destroy();
+            } catch (e) {}
+            setTimeout(() => startHost(retry + 1), 300);
+            return;
+          }
+          if (
+            err.type === "network" ||
+            err.type === "server-error" ||
+            err.type === "socket-error"
+          ) {
+            setHint(hostStatusEl, "服 务 不 通 · 刷 新 重 试", "error");
+          } else {
+            setHint(hostStatusEl, "出 错 · " + err.type, "error");
+          }
+        });
+        peer.on("disconnected", () => {
+          setHint(hostStatusEl, "信 号 中 断 · 重 连 中", "error");
+          try {
+            peer.reconnect();
+          } catch (e) {}
+        });
+      }
+
+      function startJoin(code) {
+        isHost = false;
+        btnConnect.disabled = true;
+        setHint(joinStatusEl, "连 接 中", null);
+        peer = new Peer(null, PEER_CONFIG);
+        const targetId = ROOM_PREFIX + code;
+        peer.on("open", () => {
+          setTimeout(() => {
+            conn = peer.connect(targetId, {
+              reliable: true,
+              serialization: "json",
+            });
+            if (!conn) {
+              setHint(joinStatusEl, "无 法 发 起 · 重 试", "error");
+              btnConnect.disabled = false;
+              return;
+            }
+            setupConn();
+            startIceMonitor(joinStatusEl);
+            joinTimeout = setTimeout(() => {
+              if (!isConnected) {
+                setHint(joinStatusEl, "通 道 未 通 · 网 络 受 限", "error");
+                btnConnect.disabled = false;
+                try {
+                  conn.close();
+                } catch (e) {}
+                try {
+                  peer.destroy();
+                } catch (e) {}
+                conn = null;
+                peer = null;
+              }
+            }, 20000);
+          }, 400);
+        });
+        peer.on("error", (err) => {
+          if (joinTimeout) {
+            clearTimeout(joinTimeout);
+            joinTimeout = null;
+          }
+          btnConnect.disabled = false;
+          if (err.type === "peer-unavailable") {
+            setHint(joinStatusEl, "代 号 不 存 在 · 重 试", "error");
+          } else if (
+            err.type === "network" ||
+            err.type === "server-error" ||
+            err.type === "socket-error"
+          ) {
+            setHint(joinStatusEl, "服 务 不 通 · 刷 新 重 试", "error");
+          } else {
+            setHint(joinStatusEl, "出 错 · " + err.type, "error");
+          }
+        });
+      }
+
+      function setupConn() {
+        conn.on("open", () => {
+          isConnected = true;
+          connDot.classList.add("connected");
+          exitBtn.classList.add("visible");
+          if (joinTimeout) {
+            clearTimeout(joinTimeout);
+            joinTimeout = null;
+          }
+          if (hostTimeout) {
+            clearTimeout(hostTimeout);
+            hostTimeout = null;
+          }
+          if (iceMonitorInterval) {
+            clearInterval(iceMonitorInterval);
+            iceMonitorInterval = null;
+          }
+          if (isHost) setHint(hostStatusEl, "已 接 入", "success");
+          else setHint(joinStatusEl, "已 连 接", "success");
+          setTimeout(startSession, 700);
+        });
+        conn.on("data", (msg) => {
+          if (msg && msg.type === "bye") {
+            showPairingAgain();
+            return;
+          }
+          if (msg && msg.t === "f") {
+            remote.active = !!msg.a;
+            remote.vol = msg.v || 0;
+            remote.pitch = msg.p || 0.5;
+            remote.tremor = msg.r || 0;
+            remote._seen = performance.now();
+          }
+        });
+        conn.on("close", () => {
+          if (isConnected) showPairingAgain();
+          else {
+            isConnected = false;
+            connDot.classList.remove("connected");
+            exitBtn.classList.remove("visible");
+          }
+        });
+        conn.on("error", (err) => console.error("conn err", err));
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      //  AUDIO
+      // ═══════════════════════════════════════════════════════════
+      async function initMic() {
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: false,
+            },
+          });
+        } catch (err) {
+          alert("需要麦克风权限\nMicrophone access required");
+          throw err;
+        }
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") await audioCtx.resume();
+
+        const src = audioCtx.createMediaStreamSource(micStream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.5;
+        src.connect(analyser);
+
+        timeBuf = new Float32Array(analyser.fftSize);
+        freqBuf = new Uint8Array(analyser.frequencyBinCount);
+      }
+
+      function processAudio() {
+        if (!analyser) return;
+
+        analyser.getFloatTimeDomainData(timeBuf);
+        analyser.getByteFrequencyData(freqBuf);
+
+        // Volume (RMS)
+        let sumSq = 0;
+        for (let i = 0; i < timeBuf.length; i++)
+          sumSq += timeBuf[i] * timeBuf[i];
+        const rms = Math.sqrt(sumSq / timeBuf.length);
+        local.vol = Math.min(Math.pow(rms * 4.5, 0.85), 1);
+
+        // Dominant pitch (FFT peak in vocal range)
+        const binHz = audioCtx.sampleRate / analyser.fftSize;
+        const lowBin = Math.max(1, Math.floor(PITCH_LO_HZ / binHz));
+        const highBin = Math.min(
+          freqBuf.length - 1,
+          Math.floor(PITCH_HI_HZ / binHz),
+        );
+        let maxBin = lowBin,
+          maxVal = 0;
+        for (let i = lowBin; i < highBin; i++) {
+          if (freqBuf[i] > maxVal) {
+            maxVal = freqBuf[i];
+            maxBin = i;
+          }
+        }
+        if (maxVal > 60 && rms > 0.005) {
+          const hz = maxBin * binHz;
+          const t =
+            (Math.log2(hz) - Math.log2(PITCH_LO_HZ)) /
+            (Math.log2(PITCH_HI_HZ) - Math.log2(PITCH_LO_HZ));
+          local.pitch = local.pitch * 0.6 + Math.max(0, Math.min(1, t)) * 0.4;
+        }
+
+        // Tremor: rolling variance of volume
+        volHist.push(local.vol);
+        if (volHist.length > 14) volHist.shift();
+        let m = 0;
+        for (const x of volHist) m += x;
+        m /= volHist.length;
+        let v = 0;
+        for (const x of volHist) v += (x - m) * (x - m);
+        v /= volHist.length;
+        local.tremor = Math.min(Math.sqrt(v) * 12, 1);
+
+        // VAD with hysteresis
+        const now = performance.now();
+        if (!local.active) {
+          if (rms > VAD_ON) {
+            local._on++;
+            if (local._on >= VAD_START_F) {
+              local.active = true;
+              local._silSince = 0;
+            }
+          } else local._on = 0;
+        } else {
+          if (rms < VAD_OFF) {
+            if (local._silSince === 0) local._silSince = now;
+            else if (now - local._silSince > VAD_END_MS) {
+              local.active = false;
+              local._silSince = 0;
+              local._on = 0;
+            }
+          } else local._silSince = 0;
+        }
+
+        // Send (throttled)
+        if (conn && conn.open && now - lastSendT > 1000 / SEND_HZ) {
+          lastSendT = now;
+          try {
+            conn.send({
+              t: "f",
+              a: local.active,
+              v: +local.vol.toFixed(3),
+              p: +local.pitch.toFixed(3),
+              r: +local.tremor.toFixed(3),
+            });
+          } catch (e) {}
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      //  SAMPLING
+      // ═══════════════════════════════════════════════════════════
+      function sampleFrame() {
+        const now = performance.now();
+        if (now - lastSampleT < 1000 / SAMPLE_HZ) return;
+        lastSampleT = now;
+
+        if (now - remote._seen > 1500) {
+          remote.active = false;
+          remote.vol = 0;
+        }
+
+        frames.push({
+          t: now,
+          lA: local.active,
+          lV: local.vol,
+          lP: local.pitch,
+          lTr: local.tremor,
+          rA: remote.active,
+          rV: remote.vol,
+          rP: remote.pitch,
+          rTr: remote.tremor,
+        });
+        const cutoff = now - TIMELINE_SEC * 1000;
+        while (frames.length && frames[0].t < cutoff) frames.shift();
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      //  RENDERING
+      // ═══════════════════════════════════════════════════════════
+      function paperBackground() {
+        ctx.fillStyle = "#f2efe9";
+        ctx.fillRect(0, 0, W, H);
+        // Note: paper grain comes from the .paper-grain DOM overlay (matches haptic)
+      }
+
+      function timeToX(t, now) {
+        return ((t - now) / (TIMELINE_SEC * 1000) + 1) * W;
+      }
+
+      function render() {
+        paperBackground();
+
+        const now = performance.now();
+        const yMid = H / 2;
+
+        // Faint baseline
+        ctx.strokeStyle = "rgba(26,26,26,0.10)";
+        ctx.lineWidth = 0.5;
+        ctx.setLineDash([3, 7]);
+        ctx.beginPath();
+        ctx.moveTo(0, yMid);
+        ctx.lineTo(W, yMid);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 'Now' edge marker
+        ctx.strokeStyle = "rgba(26,26,26,0.18)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(W - 0.5, 0);
+        ctx.lineTo(W - 0.5, H);
+        ctx.stroke();
+
+        if (frames.length < 2) return;
+
+        // Two passes: halos, then cores
+        for (let pass = 0; pass < 2; pass++) {
+          for (let i = 1; i < frames.length; i++) {
+            const f0 = frames[i - 1];
+            const f1 = frames[i];
+            const x0 = timeToX(f0.t, now);
+            const x1 = timeToX(f1.t, now);
+
+            const age = (now - f1.t) / (TIMELINE_SEC * 1000);
+            const alpha = Math.pow(1 - age, 1.5);
+
+            if (f1.lA && f1.rA) {
+              if (pass === 1) drawOverlap(x0, x1, yMid, f1, alpha);
+            } else if (f1.lA) {
+              drawTraceSeg(
+                x0,
+                x1,
+                yMid,
+                f0.lA ? f0.lV : 0,
+                f1.lV,
+                f1.lP,
+                f1.lTr,
+                alpha,
+                -1,
+                pass,
+              );
+            } else if (f1.rA) {
+              drawTraceSeg(
+                x0,
+                x1,
+                yMid,
+                f0.rA ? f0.rV : 0,
+                f1.rV,
+                f1.rP,
+                f1.rTr,
+                alpha,
+                +1,
+                pass,
+              );
+            }
+          }
+        }
+      }
+
+      function drawTraceSeg(
+        x0,
+        x1,
+        yMid,
+        vPrev,
+        vCurr,
+        pitch,
+        tremor,
+        alpha,
+        dir,
+        pass,
+      ) {
+        const ampPrev = vPrev * AMPLITUDE * dir;
+        const ampCurr = vCurr * AMPLITUDE * dir;
+
+        const wobbleFreq = 5 + pitch * 22;
+        const wobbleAmp = vCurr * 7 * (0.3 + pitch * 0.7);
+        const wobble = Math.sin(x1 * 0.07 * wobbleFreq) * wobbleAmp * dir;
+
+        const noiseAmp = tremor * 7;
+        const noise = (Math.random() - 0.5) * noiseAmp * dir;
+
+        const y0 = yMid + ampPrev;
+        const y1 = yMid + ampCurr + wobble + noise;
+
+        if (pass === 0) {
+          ctx.strokeStyle = `rgba(20,15,12,${alpha * 0.16})`;
+          ctx.lineWidth = 5 + vCurr * 11;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
+
+          ctx.strokeStyle = `rgba(20,15,12,${alpha * 0.08})`;
+          ctx.lineWidth = 10 + vCurr * 18;
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
+        } else {
+          ctx.strokeStyle = `rgba(15,10,8,${alpha * (0.55 + vCurr * 0.45)})`;
+          ctx.lineWidth = 1 + vCurr * 3.5;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
+        }
+      }
+
+      function drawOverlap(x0, x1, yMid, f, alpha) {
+        const w = Math.max(x1 - x0, 1);
+        const upH = f.lV * AMPLITUDE * 1.15;
+        const dnH = f.rV * AMPLITUDE * 1.15;
+        const trMax = Math.max(f.lTr, f.rTr, 0.2);
+
+        ctx.fillStyle = `rgba(15,10,8,${alpha * 0.14})`;
+        ctx.beginPath();
+        ctx.ellipse(
+          (x0 + x1) / 2,
+          yMid + (dnH - upH) / 2,
+          w * 1.6 + 8,
+          (upH + dnH) * 0.7 + 14,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+
+        ctx.fillStyle = `rgba(15,10,8,${alpha * 0.22})`;
+        ctx.beginPath();
+        ctx.ellipse(
+          (x0 + x1) / 2,
+          yMid + (dnH - upH) / 2,
+          w * 1.2 + 4,
+          (upH + dnH) * 0.6 + 6,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+
+        ctx.fillStyle = `rgba(8,6,5,${alpha * 0.88})`;
+        ctx.beginPath();
+        const N = 5;
+        for (let i = 0; i <= N; i++) {
+          const t = i / N;
+          const x = x0 + t * w;
+          const n = (Math.random() - 0.5) * trMax * 16;
+          const y = yMid - upH - 2 + n;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        for (let i = N; i >= 0; i--) {
+          const t = i / N;
+          const x = x0 + t * w;
+          const n = (Math.random() - 0.5) * trMax * 16;
+          const y = yMid + dnH + 2 + n;
+          ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      //  STATE LABEL
+      // ═══════════════════════════════════════════════════════════
+      let labelLastUpdate = 0;
+      function updateLabel() {
+        const now = performance.now();
+        if (now - labelLastUpdate < 200) return;
+        labelLastUpdate = now;
+
+        if (!isConnected) {
+          stateEl.textContent = "独 · ALONE";
+          return;
+        }
+        if (local.active && remote.active)
+          stateEl.textContent = "同 覆 · OVERLAP";
+        else if (local.active) stateEl.textContent = "言 · SPEAK";
+        else if (remote.active) stateEl.textContent = "听 · LISTEN";
+        else stateEl.textContent = "静 · STILL";
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      //  MAIN LOOP
+      // ═══════════════════════════════════════════════════════════
+      function loop() {
+        processAudio();
+        sampleFrame();
+        render();
+        updateLabel();
+        requestAnimationFrame(loop);
+      }
+
+      let loopStarted = false;
+
+      async function startSession() {
+        overlay.classList.add("hidden");
+        markerSelf.classList.remove("hidden");
+        markerOther.classList.remove("hidden");
+
+        if (!analyser) {
+          await initMic();
+        }
+        if (!loopStarted) {
+          loopStarted = true;
+          loop();
+        }
+      }
+
+      resize();
+    </script>
+  </body>
+</html>

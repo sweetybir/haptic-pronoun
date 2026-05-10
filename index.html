@@ -4,1523 +4,325 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0"
+      content="width=device-width, initial-scale=1, maximum-scale=1.5, viewport-fit=cover"
     />
-    <title>Haptic Pronoun — 双触</title>
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <title>代词 · PRONOUN</title>
     <style>
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
       }
       html,
       body {
         width: 100%;
-        height: 100%;
-        overflow: hidden;
+        min-height: 100%;
         background: #f2efe9;
-        touch-action: none;
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
-        font-family: "Times New Roman", "Songti SC", "SimSun", serif;
+        font-family: "Songti SC", "STSong", "SimSun", "Times New Roman", serif;
+        color: #1a1a1a;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
-      canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
-        position: fixed;
-        top: 0;
-        left: 0;
+      body {
+        padding: 72px 24px 100px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
       }
+
       .paper-grain {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        inset: 0;
         pointer-events: none;
-        z-index: 2;
+        z-index: 1;
         mix-blend-mode: multiply;
         opacity: 0.06;
         background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
         background-size: 256px 256px;
       }
-      .ui-layer {
-        position: fixed;
-        z-index: 3;
-        pointer-events: none;
-        color: #1a1a1a;
-        opacity: 0.32;
-      }
-      .title {
-        top: 24px;
-        left: 24px;
-        font-size: 11px;
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-      }
-      .state-label {
-        top: 24px;
-        right: 24px;
-        font-size: 10px;
-        letter-spacing: 0.12em;
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-      }
 
-      .pair-overlay {
+      /* Subtle vignette */
+      .vignette {
         position: fixed;
         inset: 0;
-        z-index: 10;
-        background: #f2efe9;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        transition:
-          opacity 1.2s ease,
-          visibility 1.2s ease;
-        padding: 24px;
-      }
-      .pair-overlay.hidden {
-        opacity: 0;
-        visibility: hidden;
         pointer-events: none;
+        z-index: 1;
+        background: radial-gradient(
+          ellipse at center,
+          transparent 30%,
+          rgba(60, 40, 20, 0.06) 100%
+        );
       }
-      .pair-title {
-        font-size: 13px;
-        letter-spacing: 0.25em;
-        text-transform: uppercase;
-        color: #1a1a1a;
-        opacity: 0.5;
-        margin-bottom: 48px;
-      }
-      .pair-mode {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 28px;
-        max-width: 320px;
+
+      .container {
+        max-width: 480px;
         width: 100%;
+        position: relative;
+        z-index: 2;
       }
-      .pair-button {
-        background: none;
-        border: 1px solid rgba(26, 26, 26, 0.25);
-        color: #1a1a1a;
-        padding: 14px 28px;
-        font-family: inherit;
-        font-size: 11px;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        cursor: pointer;
-        transition: all 0.4s ease;
-        width: 100%;
-        pointer-events: auto;
-      }
-      .pair-button:hover,
-      .pair-button:active {
-        background: rgba(26, 26, 26, 0.05);
-        border-color: rgba(26, 26, 26, 0.5);
-      }
-      .pair-button:disabled {
-        opacity: 0.3;
-        pointer-events: none;
-      }
-      .room-code {
-        font-size: 42px;
-        letter-spacing: 0.3em;
-        color: #1a1a1a;
-        opacity: 0.85;
-        font-variant-numeric: tabular-nums;
-        padding: 16px 0;
-      }
-      .pair-hint {
-        font-size: 10px;
-        letter-spacing: 0.18em;
-        color: #1a1a1a;
-        opacity: 0.4;
+
+      /* ── Header ─────────────────────── */
+      .header {
         text-align: center;
-        line-height: 1.8;
-        text-transform: uppercase;
-        min-height: 14px;
+        margin-bottom: 90px;
+      }
+
+      .series {
+        font-size: 38px;
+        letter-spacing: 28px;
+        font-weight: normal;
+        margin-left: 28px; /* counter letter-spacing visual offset */
+        margin-bottom: 14px;
+        line-height: 1.1;
+      }
+
+      .series-en {
+        font-size: 10px;
+        letter-spacing: 8px;
+        color: #999;
+        margin-bottom: 44px;
+        margin-left: 8px;
+      }
+
+      .epigraph {
+        font-size: 13px;
+        line-height: 2.4;
+        color: #4a4a4a;
+        max-width: 320px;
+        margin: 0 auto;
+      }
+
+      .epigraph-en {
+        font-size: 9px;
+        letter-spacing: 1.5px;
+        color: #999;
+        line-height: 2;
+        margin-top: 18px;
+        font-family: "Times New Roman", serif;
+        font-style: italic;
+      }
+
+      /* ── Works list ─────────────────── */
+      .works {
+        margin-bottom: 56px;
+      }
+
+      .work {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+        border-top: 1px solid rgba(26, 26, 26, 0.12);
+        padding: 40px 0 36px;
+        transition: padding 0.4s cubic-bezier(0.2, 0.8, 0.3, 1);
+        position: relative;
+        cursor: pointer;
+      }
+      .work:last-child {
+        border-bottom: 1px solid rgba(26, 26, 26, 0.12);
+      }
+      .work:hover,
+      .work:active {
+        padding-left: 14px;
+      }
+
+      .work-num {
+        font-size: 10px;
+        letter-spacing: 4px;
+        color: #999;
+        margin-bottom: 14px;
+        font-family: "Times New Roman", serif;
+        font-style: italic;
+      }
+
+      .work-title {
+        font-size: 22px;
+        letter-spacing: 10px;
+        font-weight: normal;
+        margin-left: 10px;
+        margin-bottom: 6px;
+      }
+
+      .work-title-en {
+        font-size: 10px;
+        letter-spacing: 6px;
+        color: #777;
+        margin-bottom: 14px;
+      }
+
+      .work-name {
+        font-size: 11px;
+        letter-spacing: 5px;
+        color: #888;
+        margin-bottom: 22px;
+        margin-left: 4px;
+      }
+
+      .work-desc {
+        font-size: 12.5px;
+        line-height: 2;
+        color: #3a3a3a;
+        max-width: 380px;
+        margin-bottom: 6px;
+      }
+
+      .work-desc-en {
+        font-size: 10px;
+        letter-spacing: 0.8px;
+        color: #888;
+        line-height: 1.85;
+        font-style: italic;
+        font-family: "Times New Roman", serif;
+      }
+
+      .work-enter {
+        position: absolute;
+        top: 40px;
+        right: 0;
+        font-size: 10px;
+        letter-spacing: 4px;
+        color: #999;
         transition:
-          opacity 0.4s ease,
+          transform 0.4s cubic-bezier(0.2, 0.8, 0.3, 1),
           color 0.4s ease;
       }
-      .pair-hint.error {
-        color: #8a3a2a;
-        opacity: 0.7;
-      }
-      .pair-hint.success {
-        color: #2a5a3a;
-        opacity: 0.7;
-      }
-      .code-input {
-        background: none;
-        border: none;
-        border-bottom: 1px solid rgba(26, 26, 26, 0.3);
+      .work:hover .work-enter,
+      .work:active .work-enter {
         color: #1a1a1a;
-        font-family: inherit;
-        font-size: 32px;
-        letter-spacing: 0.25em;
-        text-align: center;
-        width: 100%;
-        padding: 12px 0;
-        outline: none;
-        text-transform: uppercase;
-        pointer-events: auto;
+        transform: translateX(8px);
       }
-      .code-input:focus {
-        border-bottom-color: rgba(26, 26, 26, 0.7);
-      }
-      .divider {
-        font-size: 9px;
-        letter-spacing: 0.3em;
-        color: #1a1a1a;
-        opacity: 0.3;
-        margin: 8px 0;
-        text-transform: uppercase;
-      }
-      .conn-dot {
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #1a1a1a;
-        opacity: 0.2;
-        z-index: 3;
-        transition:
-          opacity 0.6s ease,
-          background 0.6s ease;
-      }
-      .conn-dot.connected {
-        opacity: 0.6;
-      }
-      .back-link {
-        position: absolute;
-        top: 24px;
-        left: 24px;
-        font-size: 9px;
-        letter-spacing: 0.2em;
-        color: #1a1a1a;
-        opacity: 0.4;
-        text-transform: uppercase;
-        cursor: pointer;
-        pointer-events: auto;
-        padding: 8px;
-      }
-      .exit-btn {
-        position: fixed;
-        bottom: 18px;
-        left: 24px;
-        z-index: 4;
-        font-family: inherit;
-        font-size: 10px;
-        letter-spacing: 0.2em;
-        color: #1a1a1a;
-        opacity: 0;
-        background: none;
-        border: none;
-        padding: 10px 14px 10px 0;
-        cursor: pointer;
-        text-transform: uppercase;
-        transition: opacity 0.8s ease;
+
+      .work.forthcoming {
         pointer-events: none;
+        opacity: 0.32;
       }
-      .exit-btn.visible {
-        opacity: 0.4;
-        pointer-events: auto;
+      .work.forthcoming .work-enter {
+        display: none;
       }
-      .exit-btn:active {
-        opacity: 0.7;
+
+      /* ── Footer ─────────────────────── */
+      .footer {
+        text-align: center;
+        font-size: 9px;
+        letter-spacing: 3px;
+        color: #999;
+        margin-top: 48px;
+        line-height: 2;
+      }
+      .footer-line {
+        width: 28px;
+        height: 1px;
+        background: rgba(26, 26, 26, 0.18);
+        margin: 0 auto 24px;
+      }
+      .footer-en {
+        font-family: "Times New Roman", serif;
+        font-style: italic;
+        letter-spacing: 1.5px;
+      }
+
+      /* ── Mobile ─────────────────────── */
+      @media (max-width: 480px) {
+        body {
+          padding: 56px 22px 80px;
+        }
+        .header {
+          margin-bottom: 64px;
+        }
+        .series {
+          font-size: 32px;
+          letter-spacing: 22px;
+          margin-left: 22px;
+        }
+        .series-en {
+          font-size: 9px;
+          letter-spacing: 6px;
+          margin-bottom: 36px;
+        }
+        .epigraph {
+          font-size: 12px;
+          line-height: 2.2;
+        }
+        .work {
+          padding: 32px 0 28px;
+        }
+        .work-title {
+          font-size: 19px;
+          letter-spacing: 8px;
+        }
+        .work-enter {
+          position: static;
+          display: inline-block;
+          margin-top: 18px;
+        }
       }
     </style>
   </head>
   <body>
-    <canvas id="c"></canvas>
     <div class="paper-grain"></div>
+    <div class="vignette"></div>
 
-    <div class="ui-layer title">触觉代词 · DUET</div>
-    <div class="ui-layer state-label" id="stateLabel">独 · ALONE</div>
-    <div class="conn-dot" id="connDot"></div>
+    <div class="container">
+      <header class="header">
+        <h1 class="series">代 词</h1>
+        <div class="series-en">PRONOUN</div>
+        <div class="epigraph">
+          我,你,它 ——<br />
+          代词只指向使用它的人。
+          <div class="epigraph-en">
+            I, you, it ——<br />
+            a pronoun points only to whoever speaks it.
+          </div>
+        </div>
+      </header>
 
-    <button class="exit-btn" id="exitBtn">离 · LEAVE</button>
+      <section class="works">
+        <a class="work" href="./haptic.html">
+          <div class="work-num">i.</div>
+          <h2 class="work-title">触 觉 代 词</h2>
+          <div class="work-title-en">HAPTIC PRONOUN</div>
+          <div class="work-name">双 触 · DUET</div>
+          <p class="work-desc">
+            两块屏幕,墨迹寻找彼此。触摸是一种没有词典的语言。
+          </p>
+          <p class="work-desc-en">
+            Two screens, ink looking for ink. Touch as a language with no
+            dictionary.
+          </p>
+          <div class="work-enter">入 →</div>
+        </a>
 
-    <div class="pair-overlay" id="pairOverlay">
-      <div class="back-link" id="backLink" style="display: none">← 返 回</div>
-      <div class="pair-title">触 觉 代 词</div>
+        <a class="work" href="./vocal.html">
+          <div class="work-num">ii.</div>
+          <h2 class="work-title">声 音 代 词</h2>
+          <div class="work-title-en">VOCAL PRONOUN</div>
+          <div class="work-name">声 痕 · TRACE</div>
+          <p class="work-desc">说话不是同时发声。沉默,是让对方显影的条件。</p>
+          <p class="work-desc-en">
+            Speech is not simultaneous expression. Silence is the condition that
+            lets the other develop.
+          </p>
+          <div class="work-enter">入 →</div>
+        </a>
 
-      <div class="pair-mode" id="modeSelect">
-        <button class="pair-button" id="btnHost">创建房间 · HOST</button>
-        <div class="divider">— 或 —</div>
-        <button class="pair-button" id="btnJoin">加入房间 · JOIN</button>
-      </div>
+        <div class="work forthcoming">
+          <div class="work-num">iii.</div>
+          <h2 class="work-title">— —</h2>
+          <div class="work-title-en">FORTHCOMING</div>
+          <div class="work-name">待 留 · TBD</div>
+          <p class="work-desc">下一种代词在等待。</p>
+          <p class="work-desc-en">The next pronoun is waiting.</p>
+        </div>
+      </section>
 
-      <div class="pair-mode" id="hostView" style="display: none">
-        <div class="pair-hint">告 诉 朋 友 这 个 代 号</div>
-        <div class="room-code" id="roomCode">····</div>
-        <div class="pair-hint" id="hostStatus">准 备 中</div>
-      </div>
-
-      <div class="pair-mode" id="joinView" style="display: none">
-        <div class="pair-hint">输 入 朋 友 的 代 号</div>
-        <input
-          class="code-input"
-          id="codeInput"
-          maxlength="4"
-          inputmode="text"
-          autocapitalize="characters"
-          placeholder="····"
-        />
-        <button class="pair-button" id="btnConnect">接 入 · CONNECT</button>
-        <div class="pair-hint" id="joinStatus">&nbsp;</div>
-      </div>
+      <footer class="footer">
+        <div class="footer-line"></div>
+        一组关于中介化在场的小实验<br />
+        <span class="footer-en">a series on mediated presence</span><br />
+        <br />
+        BAILEY · MMXXVI
+      </footer>
     </div>
-
-    <script>
-      // ═══════════════════════════════════════════════════════════
-      //  WebGL Setup
-      // ═══════════════════════════════════════════════════════════
-      const canvas = document.getElementById("c");
-      const gl = canvas.getContext("webgl", {
-        alpha: false,
-        antialias: false,
-        premultipliedAlpha: false,
-        preserveDrawingBuffer: false,
-      });
-      gl.getExtension("OES_standard_derivatives");
-
-      const vertSrc = `
-attribute vec2 aPos;
-varying vec2 vUv;
-void main() {
-  vUv = aPos * 0.5 + 0.5;
-  gl_Position = vec4(aPos, 0.0, 1.0);
-}`;
-
-      const MAX_SLOTS = 32;
-
-      const fragSrc = `
-#extension GL_OES_standard_derivatives : enable
-precision highp float;
-
-varying vec2 vUv;
-uniform vec2 uResolution;
-uniform float uTime;
-uniform int uCount;
-uniform vec4 uTouchesA[${MAX_SLOTS}];
-uniform vec4 uTouchesB[${MAX_SLOTS}];
-uniform vec4 uTouchesC[${MAX_SLOTS}];
-uniform float uWarmth;
-
-const vec3 PAPER = vec3(0.949, 0.937, 0.914);
-const vec3 INK   = vec3(0.055, 0.047, 0.043);
-const vec3 INK_REMOTE = vec3(0.060, 0.058, 0.068);
-
-const vec3 W0 = vec3(0.26, 0.11, 0.07);
-const vec3 W1 = vec3(0.72, 0.34, 0.14);
-const vec3 W2 = vec3(0.94, 0.74, 0.36);
-
-const vec3 C0 = vec3(0.08, 0.10, 0.20);
-const vec3 C1 = vec3(0.22, 0.36, 0.54);
-const vec3 C2 = vec3(0.58, 0.72, 0.82);
-
-const vec3 MID_EDGE = vec3(0.18, 0.15, 0.19);
-const vec3 MID_MID  = vec3(0.40, 0.36, 0.42);
-const vec3 MID_CORE = vec3(0.72, 0.66, 0.70);
-
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-float noise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  f = f*f*(3.0-2.0*f);
-  return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
-             mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
-}
-float fbm(vec2 p) {
-  float v=0.0, a=0.5;
-  for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.0+100.0;a*=0.5;}
-  return v;
-}
-
-vec3 mapInk(float depth, float w, float remoteRatio, vec3 hueColor, float hueAmt) {
-  vec3 warmG = mix(W0, W1, smoothstep(0.0, 0.45, depth));
-  warmG = mix(warmG, W2, smoothstep(0.35, 1.0, depth));
-
-  vec3 coolG = mix(C0, C1, smoothstep(0.0, 0.45, depth));
-  coolG = mix(coolG, C2, smoothstep(0.35, 1.0, depth));
-
-  vec3 midG = mix(MID_EDGE, MID_MID, smoothstep(0.0, 0.45, depth));
-  midG = mix(midG, MID_CORE, smoothstep(0.35, 1.0, depth));
-
-  vec3 colored;
-  if (w >= 0.0) {
-    colored = mix(midG, warmG, w);
-  } else {
-    colored = mix(midG, coolG, -w);
-  }
-
-  float absW = abs(w);
-  vec3 baseInk = mix(INK, INK_REMOTE, remoteRatio);
-
-  vec3 hueDeep = hueColor * 0.55;
-  vec3 hueLight = mix(hueColor, vec3(1.0, 1.0, 1.0), 0.25);
-  vec3 hueGrad = mix(hueDeep, hueLight, smoothstep(0.0, 1.0, depth));
-  baseInk = mix(baseInk, hueGrad, hueAmt);
-
-  return mix(baseInk, colored, smoothstep(0.0, 0.3, absW) * (1.0 - hueAmt * 0.7));
-}
-
-void main() {
-  vec2 uv = vUv;
-  vec2 asp = vec2(uResolution.x/uResolution.y, 1.0);
-  vec2 pos = uv * asp;
-
-  float fieldLocal = 0.0;
-  float fieldRemote = 0.0;
-  float virtueAccum = 0.0;
-  float totalWeight = 0.0;
-  vec3  hueAccum = vec3(0.0);
-  float hueAmtAccum = 0.0;
-
-  for(int i=0;i<${MAX_SLOTS};i++){
-    if(i>=uCount) break;
-
-    vec4 A = uTouchesA[i];
-    vec4 B = uTouchesB[i];
-    vec4 C = uTouchesC[i];
-
-    vec2 tp = A.xy * asp;
-    float r = A.z;
-    float kind = A.w;
-    vec2 vel = B.xy;
-    float virtue = B.z;
-    float dwell = B.w;
-    vec3 hueColor = C.xyz;
-    float hueAmt = C.w;
-
-    vec2 delta = pos - tp;
-
-    float speed = length(vel);
-    float stretchAmt = clamp(speed * 1.2, 0.0, 0.18);
-    if (speed > 0.0001) {
-      vec2 vdir = vel / speed;
-      vec2 perp = vec2(-vdir.y, vdir.x);
-      float along = dot(delta, vdir);
-      float across = dot(delta, perp);
-      along /= (1.0 + stretchAmt);
-      delta = vdir * along + perp * across;
-    }
-
-    float d = length(delta);
-
-    float sigMul = mix(1.15, 1.4, kind);
-    float dwellBoost = 1.0 + smoothstep(0.0, 2.5, dwell) * 0.35;
-    float sig = r * sigMul * dwellBoost;
-    float g = exp(-d*d/(2.0*sig*sig));
-
-    float virtueWeight = mix(1.0, 0.55, virtue);
-    g *= virtueWeight;
-
-    if (kind < 0.5) fieldLocal += g;
-    else fieldRemote += g * 0.78;
-
-    virtueAccum += g * virtue;
-    totalWeight += g;
-
-    hueAccum += hueColor * g * hueAmt;
-    hueAmtAccum += g * hueAmt;
-  }
-
-  float field = fieldLocal + fieldRemote;
-  float remoteRatio = field > 0.001 ? clamp(fieldRemote / field, 0.0, 1.0) : 0.0;
-  float avgVirtue = totalWeight > 0.001 ? clamp(virtueAccum / totalWeight, 0.0, 1.0) : 0.0;
-
-  vec3 avgHue = vec3(0.0);
-  float avgHueAmt = 0.0;
-  if (totalWeight > 0.001) {
-    avgHueAmt = clamp(hueAmtAccum / totalWeight, 0.0, 1.0);
-    if (hueAmtAccum > 0.001) {
-      avgHue = hueAccum / hueAmtAccum;
-    }
-  }
-
-  float t = uTime * 0.15;
-  float n = fbm(pos*3.0 + vec2(t*0.3, t*0.2)) * 0.12;
-  float extraDistort = remoteRatio * fbm(pos*5.0 + uTime*0.08) * 0.06;
-  float virtueDistort = avgVirtue * fbm(pos*4.0 + uTime*0.12) * 0.05;
-  float df = field + n * field * 2.0 + extraDistort + virtueDistort;
-
-  float shadow = smoothstep(0.0, 0.05, df) * (1.0 - exp(-df*3.0));
-  float core   = 1.0 - exp(-df*6.0);
-  float halo   = smoothstep(0.0, 0.02, df) * 0.15;
-  shadow *= sin(uTime*1.5)*0.03 + 1.0;
-
-  float ink = clamp(shadow*0.55 + core*0.35 + halo, 0.0, 1.0);
-
-  float edgeReal = smoothstep(0.0, 0.28, df);
-  float edgeVirtual = smoothstep(0.0, 0.42, df);
-  float edge = mix(edgeReal, edgeVirtual, avgVirtue);
-  ink = mix(ink*0.55, ink, edge);
-
-  ink *= mix(1.0, 0.88, remoteRatio);
-
-  float mp = smoothstep(0.9, 1.1, df);
-  ink = clamp(ink + sin(uTime*4.0)*0.04*mp, 0.0, 1.0);
-
-  float depth = clamp(df / 1.5, 0.0, 1.0);
-  vec3 ic = mapInk(depth, uWarmth, remoteRatio, avgHue, avgHueAmt);
-
-  float grain = fbm(uv*80.0 + uTime*0.01) * 0.03;
-  vec3 col = mix(PAPER + grain, ic, ink);
-
-  float vig = 1.0 - dot((uv-0.5)*1.1, (uv-0.5)*1.1);
-  col *= 0.92 + 0.08*vig;
-
-  gl_FragColor = vec4(col, 1.0);
-}`;
-
-      function makeShader(type, src) {
-        const s = gl.createShader(type);
-        gl.shaderSource(s, src);
-        gl.compileShader(s);
-        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
-          console.error(gl.getShaderInfoLog(s));
-        return s;
-      }
-      const prog = gl.createProgram();
-      gl.attachShader(prog, makeShader(gl.VERTEX_SHADER, vertSrc));
-      gl.attachShader(prog, makeShader(gl.FRAGMENT_SHADER, fragSrc));
-      gl.linkProgram(prog);
-      gl.useProgram(prog);
-
-      const buf = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      gl.bufferData(
-        gl.ARRAY_BUFFER,
-        new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
-        gl.STATIC_DRAW,
-      );
-      const aP = gl.getAttribLocation(prog, "aPos");
-      gl.enableVertexAttribArray(aP);
-      gl.vertexAttribPointer(aP, 2, gl.FLOAT, false, 0, 0);
-
-      const loc = (n) => gl.getUniformLocation(prog, n);
-      const uRes = loc("uResolution"),
-        uTm = loc("uTime"),
-        uCnt = loc("uCount"),
-        uW = loc("uWarmth");
-      const uTA = [],
-        uTB = [],
-        uTC = [];
-      for (let i = 0; i < MAX_SLOTS; i++) {
-        uTA.push(loc(`uTouchesA[${i}]`));
-        uTB.push(loc(`uTouchesB[${i}]`));
-        uTC.push(loc(`uTouchesC[${i}]`));
-      }
-
-      // ═══════════════════════════════════════════════════════════
-      //  Touch state
-      // ═══════════════════════════════════════════════════════════
-      const localActive = new Map();
-      const localFading = [];
-      const localTrails = [];
-
-      const remoteActive = new Map();
-      const remoteFading = [];
-      const remoteTrails = [];
-
-      const stateEl = document.getElementById("stateLabel");
-      const connDot = document.getElementById("connDot");
-      const exitBtn = document.getElementById("exitBtn");
-
-      let warmth = 0,
-        target = 0,
-        merged = false,
-        wasMerged = false,
-        mergeT = 0;
-
-      const TRAIL_LIFETIME = 0.55;
-      const BASE_MIN_RADIUS = 0.006;
-
-      const TAP_MAX_DURATION = 0.28;
-      const TAP_MAX_DISPLACEMENT = 0.025;
-
-      const PALETTE = [
-        [0.92, 0.62, 0.78],
-        [0.55, 0.78, 0.92],
-        [0.62, 0.88, 0.78],
-        [0.96, 0.72, 0.55],
-        [0.95, 0.88, 0.55],
-        [0.74, 0.68, 0.92],
-        [0.95, 0.68, 0.65],
-        [0.68, 0.92, 0.86],
-      ];
-
-      function randomHue() {
-        return PALETTE[Math.floor(Math.random() * PALETTE.length)];
-      }
-
-      // ═══════════════════════════════════════════════════════════
-      //  PeerJS Connection (unchanged)
-      // ═══════════════════════════════════════════════════════════
-      let peer = null;
-      let conn = null;
-      let isHost = false;
-      let isConnected = false;
-      let joinTimeout = null;
-      let hostTimeout = null;
-      let iceMonitorInterval = null;
-
-      const overlay = document.getElementById("pairOverlay");
-      const modeSelect = document.getElementById("modeSelect");
-      const hostView = document.getElementById("hostView");
-      const joinView = document.getElementById("joinView");
-      const roomCodeEl = document.getElementById("roomCode");
-      const hostStatusEl = document.getElementById("hostStatus");
-      const joinStatusEl = document.getElementById("joinStatus");
-      const codeInput = document.getElementById("codeInput");
-      const btnConnect = document.getElementById("btnConnect");
-      const backLink = document.getElementById("backLink");
-
-      const ROOM_PREFIX = "hpnn-";
-
-      const PEER_CONFIG = {
-        debug: 1,
-        config: {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun.cloudflare.com:3478" },
-            {
-              urls: "turn:openrelay.metered.ca:80",
-              username: "openrelayproject",
-              credential: "openrelayproject",
-            },
-            {
-              urls: "turn:openrelay.metered.ca:443",
-              username: "openrelayproject",
-              credential: "openrelayproject",
-            },
-            {
-              urls: "turn:openrelay.metered.ca:443?transport=tcp",
-              username: "openrelayproject",
-              credential: "openrelayproject",
-            },
-          ],
-          iceCandidatePoolSize: 10,
-        },
-      };
-
-      function genCode() {
-        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        let s = "";
-        for (let i = 0; i < 4; i++)
-          s += chars[Math.floor(Math.random() * chars.length)];
-        return s;
-      }
-
-      function setHint(el, text, cls) {
-        el.textContent = text;
-        el.classList.remove("error", "success");
-        if (cls) el.classList.add(cls);
-      }
-
-      function teardownPeer() {
-        if (joinTimeout) {
-          clearTimeout(joinTimeout);
-          joinTimeout = null;
-        }
-        if (hostTimeout) {
-          clearTimeout(hostTimeout);
-          hostTimeout = null;
-        }
-        if (iceMonitorInterval) {
-          clearInterval(iceMonitorInterval);
-          iceMonitorInterval = null;
-        }
-        if (conn) {
-          try {
-            conn.close();
-          } catch (e) {}
-          conn = null;
-        }
-        if (peer && !peer.destroyed) {
-          try {
-            peer.destroy();
-          } catch (e) {}
-        }
-        peer = null;
-        isConnected = false;
-        connDot.classList.remove("connected");
-        exitBtn.classList.remove("visible");
-        remoteActive.clear();
-        remoteFading.length = 0;
-        remoteTrails.length = 0;
-      }
-
-      function resetToModeSelect() {
-        teardownPeer();
-        hostView.style.display = "none";
-        joinView.style.display = "none";
-        modeSelect.style.display = "flex";
-        backLink.style.display = "none";
-        btnConnect.disabled = false;
-        setHint(joinStatusEl, "\u00A0", null);
-        setHint(hostStatusEl, "准 备 中", null);
-        roomCodeEl.textContent = "····";
-        codeInput.value = "";
-      }
-
-      function showPairingAgain() {
-        teardownPeer();
-        overlay.classList.remove("hidden");
-        hostView.style.display = "none";
-        joinView.style.display = "none";
-        modeSelect.style.display = "flex";
-        backLink.style.display = "none";
-        btnConnect.disabled = false;
-        setHint(joinStatusEl, "\u00A0", null);
-        setHint(hostStatusEl, "准 备 中", null);
-        roomCodeEl.textContent = "····";
-        codeInput.value = "";
-      }
-
-      backLink.addEventListener("click", resetToModeSelect);
-
-      document.getElementById("btnHost").addEventListener("click", () => {
-        modeSelect.style.display = "none";
-        hostView.style.display = "flex";
-        backLink.style.display = "block";
-        startHost();
-      });
-
-      document.getElementById("btnJoin").addEventListener("click", () => {
-        modeSelect.style.display = "none";
-        joinView.style.display = "flex";
-        backLink.style.display = "block";
-        setTimeout(() => codeInput.focus(), 100);
-      });
-
-      btnConnect.addEventListener("click", () => {
-        const code = codeInput.value.trim().toUpperCase();
-        if (code.length !== 4) {
-          setHint(joinStatusEl, "代 号 应 为 四 位", "error");
-          return;
-        }
-        startJoin(code);
-      });
-
-      codeInput.addEventListener("input", (e) => {
-        e.target.value = e.target.value.toUpperCase();
-      });
-      codeInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") btnConnect.click();
-      });
-
-      exitBtn.addEventListener("click", () => {
-        if (conn && isConnected) {
-          try {
-            conn.send({ type: "bye" });
-          } catch (e) {}
-        }
-        setTimeout(showPairingAgain, 120);
-      });
-
-      function startIceMonitor(statusEl) {
-        if (iceMonitorInterval) clearInterval(iceMonitorInterval);
-        iceMonitorInterval = setInterval(() => {
-          if (!conn || !conn.peerConnection) return;
-          const pc = conn.peerConnection;
-          const state = pc.iceConnectionState;
-          if (isConnected) {
-            clearInterval(iceMonitorInterval);
-            iceMonitorInterval = null;
-            return;
-          }
-          if (state === "new" || state === "checking") {
-            setHint(statusEl, "协 商 中 · " + state.toUpperCase(), null);
-          } else if (state === "connected" || state === "completed") {
-            setHint(statusEl, "通 道 已 通", "success");
-          } else if (state === "failed") {
-            setHint(statusEl, "ICE 失 败 · 网 络 不 通", "error");
-          } else if (state === "disconnected") {
-            setHint(statusEl, "信 号 不 稳", "error");
-          }
-        }, 500);
-      }
-
-      function startHost(retry = 0) {
-        isHost = true;
-        const code = genCode();
-        const peerId = ROOM_PREFIX + code;
-        roomCodeEl.textContent = code;
-        setHint(hostStatusEl, "准 备 中", null);
-        peer = new Peer(peerId, PEER_CONFIG);
-        peer.on("open", () => {
-          setHint(hostStatusEl, "等 待 接 入", null);
-        });
-        peer.on("connection", (c) => {
-          conn = c;
-          setHint(hostStatusEl, "正 在 建 立", null);
-          startIceMonitor(hostStatusEl);
-          hostTimeout = setTimeout(() => {
-            if (!isConnected) {
-              setHint(hostStatusEl, "通 道 未 建 立 · 请 朋 友 重 试", "error");
-              try {
-                c.close();
-              } catch (e) {}
-              conn = null;
-            }
-          }, 20000);
-          setupConn();
-        });
-        peer.on("error", (err) => {
-          console.error("host peer err", err.type, err);
-          if (err.type === "unavailable-id" && retry < 3) {
-            try {
-              peer.destroy();
-            } catch (e) {}
-            setTimeout(() => startHost(retry + 1), 300);
-            return;
-          }
-          if (
-            err.type === "network" ||
-            err.type === "server-error" ||
-            err.type === "socket-error"
-          ) {
-            setHint(hostStatusEl, "服 务 不 通 · 刷 新 重 试", "error");
-          } else {
-            setHint(hostStatusEl, "出 错 · " + err.type, "error");
-          }
-        });
-        peer.on("disconnected", () => {
-          setHint(hostStatusEl, "信 号 中 断 · 重 连 中", "error");
-          try {
-            peer.reconnect();
-          } catch (e) {}
-        });
-      }
-
-      function startJoin(code) {
-        isHost = false;
-        btnConnect.disabled = true;
-        setHint(joinStatusEl, "连 接 中", null);
-        peer = new Peer(null, PEER_CONFIG);
-        const targetId = ROOM_PREFIX + code;
-        peer.on("open", (myId) => {
-          setTimeout(() => {
-            conn = peer.connect(targetId, {
-              reliable: true,
-              serialization: "json",
-            });
-            if (!conn) {
-              setHint(joinStatusEl, "无 法 发 起 · 重 试", "error");
-              btnConnect.disabled = false;
-              return;
-            }
-            setupConn();
-            startIceMonitor(joinStatusEl);
-            joinTimeout = setTimeout(() => {
-              if (!isConnected) {
-                setHint(joinStatusEl, "通 道 未 通 · 网 络 受 限", "error");
-                btnConnect.disabled = false;
-                try {
-                  conn.close();
-                } catch (e) {}
-                try {
-                  peer.destroy();
-                } catch (e) {}
-                conn = null;
-                peer = null;
-              }
-            }, 20000);
-          }, 400);
-        });
-        peer.on("error", (err) => {
-          console.error("join peer err", err.type, err);
-          if (joinTimeout) {
-            clearTimeout(joinTimeout);
-            joinTimeout = null;
-          }
-          btnConnect.disabled = false;
-          if (err.type === "peer-unavailable") {
-            setHint(joinStatusEl, "代 号 不 存 在 · 重 试", "error");
-          } else if (
-            err.type === "network" ||
-            err.type === "server-error" ||
-            err.type === "socket-error"
-          ) {
-            setHint(joinStatusEl, "服 务 不 通 · 刷 新 重 试", "error");
-          } else {
-            setHint(joinStatusEl, "出 错 · " + err.type, "error");
-          }
-        });
-      }
-
-      function setupConn() {
-        conn.on("open", () => {
-          isConnected = true;
-          connDot.classList.add("connected");
-          exitBtn.classList.add("visible");
-          if (joinTimeout) {
-            clearTimeout(joinTimeout);
-            joinTimeout = null;
-          }
-          if (hostTimeout) {
-            clearTimeout(hostTimeout);
-            hostTimeout = null;
-          }
-          if (iceMonitorInterval) {
-            clearInterval(iceMonitorInterval);
-            iceMonitorInterval = null;
-          }
-          if (isHost) {
-            setHint(hostStatusEl, "已 接 入", "success");
-          } else {
-            setHint(joinStatusEl, "已 连 接", "success");
-          }
-          setTimeout(closeOverlay, 700);
-        });
-        conn.on("data", (msg) => {
-          if (msg && msg.type === "bye") {
-            showPairingAgain();
-            return;
-          }
-          handleRemoteMsg(msg);
-        });
-        conn.on("close", () => {
-          if (isConnected) {
-            showPairingAgain();
-          } else {
-            isConnected = false;
-            connDot.classList.remove("connected");
-            exitBtn.classList.remove("visible");
-            remoteActive.clear();
-          }
-        });
-        conn.on("error", (err) => console.error("conn err", err));
-      }
-
-      function closeOverlay() {
-        overlay.classList.add("hidden");
-      }
-
-      function sendMsg(msg) {
-        if (conn && isConnected) {
-          try {
-            conn.send(msg);
-          } catch (e) {}
-        }
-      }
-
-      function handleRemoteMsg(msg) {
-        if (!msg || !msg.type) return;
-
-        if (msg.type === "down") {
-          const now = performance.now() / 1000;
-          remoteActive.set(msg.id, {
-            x: msg.x,
-            y: msg.y,
-            radius: msg.r,
-            targetX: msg.x,
-            targetY: msg.y,
-            targetR: msg.r,
-            lastX: msg.x,
-            lastY: msg.y,
-            vx: 0,
-            vy: 0,
-            dwell: 0,
-            stillX: msg.x,
-            stillY: msg.y,
-            // trail head tracking — see emitTrail
-            trailHeadX: msg.x,
-            trailHeadY: msg.y,
-          });
-        } else if (msg.type === "move") {
-          const existing = remoteActive.get(msg.id);
-          if (existing) {
-            existing.targetX = msg.x;
-            existing.targetY = msg.y;
-            existing.targetR = msg.r;
-          } else {
-            const now = performance.now() / 1000;
-            remoteActive.set(msg.id, {
-              x: msg.x,
-              y: msg.y,
-              radius: msg.r,
-              targetX: msg.x,
-              targetY: msg.y,
-              targetR: msg.r,
-              lastX: msg.x,
-              lastY: msg.y,
-              vx: 0,
-              vy: 0,
-              dwell: 0,
-              stillX: msg.x,
-              stillY: msg.y,
-              trailHeadX: msg.x,
-              trailHeadY: msg.y,
-            });
-          }
-        } else if (msg.type === "up") {
-          const ex = remoteActive.get(msg.id);
-          if (ex) {
-            let hue = [0, 0, 0],
-              hueAmt = 0;
-            if (msg.tapHue) {
-              hue = msg.tapHue;
-              hueAmt = 1.0;
-            }
-            remoteFading.push({
-              x: ex.x,
-              y: ex.y,
-              radius: ex.radius,
-              fadeAlpha: 1.0,
-              hue,
-              hueAmt,
-            });
-            remoteActive.delete(msg.id);
-          }
-        }
-      }
-
-      // ═══════════════════════════════════════════════════════════
-      //  Local Touch
-      // ═══════════════════════════════════════════════════════════
-      function norm(t, r) {
-        const x = (t.clientX - r.left) / r.width;
-        const y = 1 - (t.clientY - r.top) / r.height;
-        const rx = (t.radiusX || 8) / r.width;
-        const ry = (t.radiusY || 8) / r.height;
-        return { x, y, radius: Math.max(Math.sqrt(rx * ry), BASE_MIN_RADIUS) };
-      }
-
-      function spawnLocal(id, n) {
-        const now = performance.now() / 1000;
-        localActive.set(id, {
-          x: n.x,
-          y: n.y,
-          radius: n.radius,
-          lastX: n.x,
-          lastY: n.y,
-          vx: 0,
-          vy: 0,
-          dwell: 0,
-          stillX: n.x,
-          stillY: n.y,
-          trailHeadX: n.x,
-          trailHeadY: n.y,
-          spawnT: now,
-          spawnX: n.x,
-          spawnY: n.y,
-          maxDisp: 0,
-        });
-      }
-
-      function updateLocal(id, n) {
-        const ex = localActive.get(id);
-        if (!ex) return;
-        ex.x = n.x;
-        ex.y = n.y;
-        ex.radius = n.radius;
-        const disp = Math.hypot(n.x - ex.spawnX, n.y - ex.spawnY);
-        if (disp > ex.maxDisp) ex.maxDisp = disp;
-      }
-
-      canvas.addEventListener(
-        "touchstart",
-        (e) => {
-          e.preventDefault();
-          const r = canvas.getBoundingClientRect();
-          for (const t of e.changedTouches) {
-            const n = norm(t, r);
-            spawnLocal(t.identifier, n);
-            sendMsg({
-              type: "down",
-              id: t.identifier,
-              x: n.x,
-              y: n.y,
-              r: n.radius,
-            });
-          }
-          refreshState();
-        },
-        { passive: false },
-      );
-
-      canvas.addEventListener(
-        "touchmove",
-        (e) => {
-          e.preventDefault();
-          const r = canvas.getBoundingClientRect();
-          for (const t of e.changedTouches) {
-            if (localActive.has(t.identifier)) {
-              const n = norm(t, r);
-              updateLocal(t.identifier, n);
-              sendMsg({
-                type: "move",
-                id: t.identifier,
-                x: n.x,
-                y: n.y,
-                r: n.radius,
-              });
-            }
-          }
-          refreshState();
-        },
-        { passive: false },
-      );
-
-      function liftLocal(touchId) {
-        const ex = localActive.get(touchId);
-        if (!ex) return;
-        const now = performance.now() / 1000;
-        const dur = now - ex.spawnT;
-        const isTap =
-          dur < TAP_MAX_DURATION && ex.maxDisp < TAP_MAX_DISPLACEMENT;
-
-        let hue = [0, 0, 0],
-          hueAmt = 0;
-        if (isTap) {
-          hue = randomHue();
-          hueAmt = 1.0;
-        }
-
-        localFading.push({
-          x: ex.x,
-          y: ex.y,
-          radius: ex.radius,
-          fadeAlpha: 1.0,
-          hue,
-          hueAmt,
-        });
-        localActive.delete(touchId);
-
-        if (isTap) {
-          sendMsg({ type: "up", id: touchId, tapHue: hue });
-        } else {
-          sendMsg({ type: "up", id: touchId });
-        }
-      }
-
-      canvas.addEventListener(
-        "touchend",
-        (e) => {
-          e.preventDefault();
-          for (const t of e.changedTouches) liftLocal(t.identifier);
-          refreshState();
-        },
-        { passive: false },
-      );
-
-      canvas.addEventListener("touchcancel", (e) => {
-        for (const t of e.changedTouches) liftLocal(t.identifier);
-        refreshState();
-      });
-
-      let mDown = false;
-      canvas.addEventListener("mousedown", (e) => {
-        mDown = true;
-        const r = canvas.getBoundingClientRect();
-        const n = {
-          x: (e.clientX - r.left) / r.width,
-          y: 1 - (e.clientY - r.top) / r.height,
-          radius: 0.018,
-        };
-        spawnLocal("m", n);
-        sendMsg({ type: "down", id: "m", x: n.x, y: n.y, r: n.radius });
-        refreshState();
-      });
-      canvas.addEventListener("mousemove", (e) => {
-        if (!mDown) return;
-        const r = canvas.getBoundingClientRect();
-        const n = {
-          x: (e.clientX - r.left) / r.width,
-          y: 1 - (e.clientY - r.top) / r.height,
-          radius: 0.018,
-        };
-        updateLocal("m", n);
-        sendMsg({ type: "move", id: "m", x: n.x, y: n.y, r: n.radius });
-        refreshState();
-      });
-      canvas.addEventListener("mouseup", () => {
-        if (mDown) {
-          mDown = false;
-          liftLocal("m");
-          refreshState();
-        }
-      });
-
-      // ═══════════════════════════════════════════════════════════
-      //  Physics + Trail (REWRITTEN — head always attached)
-      // ═══════════════════════════════════════════════════════════
-      function stepPoint(p, dt) {
-        const dx = p.x - p.lastX;
-        const dy = p.y - p.lastY;
-        const instVx = dx / Math.max(dt, 0.0001);
-        const instVy = dy / Math.max(dt, 0.0001);
-        p.vx += (instVx - p.vx) * Math.min(1, dt * 12);
-        p.vy += (instVy - p.vy) * Math.min(1, dt * 12);
-
-        const stillDx = p.x - p.stillX;
-        const stillDy = p.y - p.stillY;
-        const stillDist = Math.sqrt(stillDx * stillDx + stillDy * stillDy);
-        if (stillDist < 0.008) {
-          p.dwell += dt;
-        } else {
-          p.dwell = 0;
-          p.stillX = p.x;
-          p.stillY = p.y;
-        }
-
-        p.lastX = p.x;
-        p.lastY = p.y;
-      }
-
-      // ─── Trail: head-attached interpolation ───
-      //
-      // The bug in the previous version was that emitTrail dropped samples
-      // from p.lastTrailX/Y up to *current* p.x/p.y, but then the main touch
-      // continued to be drawn as a separate point at the current position.
-      // Visually this made the trail "lag behind" the live touch.
-      //
-      // Fix: every frame, lay down a dense series of samples from the previous
-      // trail head all the way TO the current touch position, with NO gap.
-      // The current touch IS the most recent sample. Spacing is ~30% of touch
-      // radius (was 60%) so adjacent samples overlap heavily and look continuous.
-      //
-      // The main touch point is still rendered separately on top, but now
-      // because the trail extends fully up to (and including) the same position,
-      // the visual is one continuous stroke.
-      function emitTrail(pool, p, now) {
-        const SPACING = Math.max(p.radius * 0.3, 0.0035);
-
-        const dx = p.x - p.trailHeadX;
-        const dy = p.y - p.trailHeadY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        // Dwell case: drop a sample at the current position to "soak in"
-        if (dist < SPACING) {
-          if (p.dwell >= 0.3) {
-            pool.push({
-              x: p.x,
-              y: p.y,
-              radius: p.radius * (0.7 + Math.min(p.dwell, 1.5) * 0.25),
-              birthT: now,
-              vx: 0,
-              vy: 0,
-            });
-            p.trailHeadX = p.x;
-            p.trailHeadY = p.y;
-          }
-          return;
-        }
-
-        // Motion case: lay samples densely from previous head to current position.
-        // Crucially we go all the way to the current position (i goes up to steps inclusive)
-        // so the trail is continuous with the live touch.
-        const steps = Math.min(Math.ceil(dist / SPACING), 30);
-        for (let i = 1; i <= steps; i++) {
-          const t = i / steps;
-          const sx = p.trailHeadX + dx * t;
-          const sy = p.trailHeadY + dy * t;
-          pool.push({
-            x: sx,
-            y: sy,
-            radius: p.radius * (0.88 + Math.min(p.dwell, 1.0) * 0.12),
-            birthT: now,
-            vx: p.vx * 0.3,
-            vy: p.vy * 0.3,
-          });
-          if (pool.length > 280) pool.shift();
-        }
-
-        p.trailHeadX = p.x;
-        p.trailHeadY = p.y;
-      }
-
-      function stepTrails(pool, now) {
-        for (let i = pool.length - 1; i >= 0; i--) {
-          const age = now - pool[i].birthT;
-          if (age > TRAIL_LIFETIME) pool.splice(i, 1);
-        }
-      }
-
-      function emitBridges(touchPool, bridgePool, now) {
-        const pts = [...touchPool.values()];
-        for (let i = 0; i < pts.length; i++) {
-          for (let j = i + 1; j < pts.length; j++) {
-            const a = pts[i],
-              b = pts[j];
-            const dx = b.x - a.x,
-              dy = b.y - a.y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            if (d < 0.001) continue;
-            if (d > 0.32) continue;
-            const t = 0.5;
-            const closeness = 1.0 - d / 0.32;
-            bridgePool.push({
-              x: a.x + dx * t,
-              y: a.y + dy * t,
-              radius: (a.radius + b.radius) * 0.5 * closeness * 0.9,
-              birthT: now,
-              vx: 0,
-              vy: 0,
-            });
-          }
-        }
-      }
-
-      function checkCrossMerge() {
-        const locals = [...localActive.values()];
-        const remotes = [...remoteActive.values()];
-
-        if (locals.length === 0 || remotes.length === 0) {
-          if (locals.length >= 2) {
-            for (let i = 0; i < locals.length; i++)
-              for (let j = i + 1; j < locals.length; j++) {
-                const dx = locals[i].x - locals[j].x,
-                  dy = locals[i].y - locals[j].y;
-                if (
-                  Math.sqrt(dx * dx + dy * dy) <
-                  (locals[i].radius + locals[j].radius) * 5.5
-                )
-                  return true;
-              }
-          }
-          return false;
-        }
-        for (const l of locals) {
-          for (const r of remotes) {
-            const dx = l.x - r.x,
-              dy = l.y - r.y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            if (d < 0.22) return true;
-          }
-        }
-        return false;
-      }
-
-      function refreshState() {
-        const ln = localActive.size;
-        const rn = remoteActive.size;
-        merged = checkCrossMerge();
-
-        if (ln === 0 && rn === 0) {
-          stateEl.textContent = isConnected ? "共 · TOGETHER" : "独 · ALONE";
-        } else if (merged) {
-          stateEl.textContent = "相 遇 · MEET";
-        } else if (rn > 0 && ln > 0) {
-          stateEl.textContent = "同 在 · WITH";
-        } else if (rn > 0) {
-          stateEl.textContent = "彼 · OTHER";
-        } else if (ln === 1) {
-          const t = [...localActive.values()][0];
-          stateEl.textContent = t.radius > 0.06 ? "面 · PALM" : "点 · TAP";
-        } else {
-          stateEl.textContent = `多 · ×${ln}`;
-        }
-      }
-
-      function stepWarmth(dt) {
-        if (merged) {
-          mergeT += dt;
-          wasMerged = true;
-          if (mergeT > 1.0) target = Math.min(1, target + 0.22 * dt);
-        } else if (
-          wasMerged &&
-          (localActive.size > 0 || remoteActive.size > 0)
-        ) {
-          target = Math.max(-1, target - 0.35 * dt);
-          mergeT = Math.max(0, mergeT - dt * 0.6);
-        } else if (localActive.size === 0 && remoteActive.size === 0) {
-          target += (0 - target) * 0.18 * dt;
-          mergeT = Math.max(0, mergeT - dt * 0.4);
-          if (mergeT <= 0.01) wasMerged = false;
-        } else {
-          mergeT = Math.max(0, mergeT - dt * 0.8);
-        }
-        warmth += (target - warmth) * Math.min(1, dt * 2.2);
-      }
-
-      function resize() {
-        const d = Math.min(devicePixelRatio || 1, 2);
-        canvas.width = innerWidth * d;
-        canvas.height = innerHeight * d;
-        gl.viewport(0, 0, canvas.width, canvas.height);
-      }
-      addEventListener("resize", resize);
-      resize();
-
-      const bridgeLocal = [];
-      const bridgeRemote = [];
-
-      let prev = performance.now();
-
-      function loop(now) {
-        const dt = Math.min((now - prev) / 1000, 0.1);
-        prev = now;
-        const nowS = now / 1000;
-
-        for (const p of localActive.values()) {
-          stepPoint(p, dt);
-          emitTrail(localTrails, p, nowS);
-        }
-
-        for (const r of remoteActive.values()) {
-          r.x += (r.targetX - r.x) * Math.min(1, dt * 12);
-          r.y += (r.targetY - r.y) * Math.min(1, dt * 12);
-          r.radius += (r.targetR - r.radius) * Math.min(1, dt * 8);
-          stepPoint(r, dt);
-          emitTrail(remoteTrails, r, nowS);
-        }
-
-        bridgeLocal.length = 0;
-        bridgeRemote.length = 0;
-        emitBridges(localActive, bridgeLocal, nowS);
-        emitBridges(remoteActive, bridgeRemote, nowS);
-
-        stepTrails(localTrails, nowS);
-        stepTrails(remoteTrails, nowS);
-
-        refreshState();
-        stepWarmth(dt);
-
-        gl.uniform2f(uRes, canvas.width, canvas.height);
-        gl.uniform1f(uTm, now / 1000);
-        gl.uniform1f(uW, warmth);
-
-        for (let i = localFading.length - 1; i >= 0; i--) {
-          const f = localFading[i];
-          f.fadeAlpha -= 0.025;
-          const growRate = f.hueAmt > 0 ? 1.025 : 1.008;
-          f.radius *= growRate;
-          if (f.fadeAlpha <= 0) localFading.splice(i, 1);
-        }
-        for (let i = remoteFading.length - 1; i >= 0; i--) {
-          const f = remoteFading[i];
-          f.fadeAlpha -= 0.025;
-          const growRate = f.hueAmt > 0 ? 1.025 : 1.008;
-          f.radius *= growRate;
-          if (f.fadeAlpha <= 0) remoteFading.splice(i, 1);
-        }
-
-        const slots = [];
-        const pushSlot = (p, kind, virtue, dwellOverride, hue, hueAmt) => {
-          if (slots.length >= MAX_SLOTS) return;
-          const dwell =
-            dwellOverride !== undefined ? dwellOverride : p.dwell || 0;
-          slots.push({
-            x: p.x,
-            y: p.y,
-            radius: p.radius,
-            kind,
-            vx: p.vx || 0,
-            vy: p.vy || 0,
-            virtue,
-            dwell,
-            hue: hue || [0, 0, 0],
-            hueAmt: hueAmt || 0,
-          });
-        };
-
-        for (const p of localActive.values()) pushSlot(p, 0, 0);
-        for (const p of remoteActive.values()) pushSlot(p, 1, 0);
-        for (const b of bridgeLocal) pushSlot(b, 0, 0.5, 0);
-        for (const b of bridgeRemote) pushSlot(b, 1, 0.5, 0);
-
-        for (const t of localTrails) {
-          if (slots.length >= MAX_SLOTS) break;
-          const age = nowS - t.birthT;
-          const lifeT = Math.max(0, 1.0 - age / TRAIL_LIFETIME);
-          slots.push({
-            x: t.x,
-            y: t.y,
-            radius: t.radius * (0.55 + lifeT * 0.45),
-            kind: 0,
-            vx: t.vx,
-            vy: t.vy,
-            virtue: 0.6 + (1.0 - lifeT) * 0.4,
-            dwell: 0,
-            hue: [0, 0, 0],
-            hueAmt: 0,
-          });
-        }
-        for (const t of remoteTrails) {
-          if (slots.length >= MAX_SLOTS) break;
-          const age = nowS - t.birthT;
-          const lifeT = Math.max(0, 1.0 - age / TRAIL_LIFETIME);
-          slots.push({
-            x: t.x,
-            y: t.y,
-            radius: t.radius * (0.55 + lifeT * 0.45),
-            kind: 1,
-            vx: t.vx,
-            vy: t.vy,
-            virtue: 0.7 + (1.0 - lifeT) * 0.3,
-            dwell: 0,
-            hue: [0, 0, 0],
-            hueAmt: 0,
-          });
-        }
-
-        for (const f of localFading) {
-          if (slots.length >= MAX_SLOTS) break;
-          slots.push({
-            x: f.x,
-            y: f.y,
-            radius: f.radius * f.fadeAlpha,
-            kind: 0,
-            vx: 0,
-            vy: 0,
-            virtue: 1.0 - f.fadeAlpha * 0.3,
-            dwell: 0,
-            hue: f.hue,
-            hueAmt: f.hueAmt * f.fadeAlpha,
-          });
-        }
-        for (const f of remoteFading) {
-          if (slots.length >= MAX_SLOTS) break;
-          slots.push({
-            x: f.x,
-            y: f.y,
-            radius: f.radius * f.fadeAlpha,
-            kind: 1,
-            vx: 0,
-            vy: 0,
-            virtue: 1.0 - f.fadeAlpha * 0.2,
-            dwell: 0,
-            hue: f.hue,
-            hueAmt: f.hueAmt * f.fadeAlpha,
-          });
-        }
-
-        const cnt = Math.min(slots.length, MAX_SLOTS);
-        gl.uniform1i(uCnt, cnt);
-        for (let i = 0; i < MAX_SLOTS; i++) {
-          if (i < cnt) {
-            const p = slots[i];
-            gl.uniform4f(uTA[i], p.x, p.y, Math.max(p.radius, 0.001), p.kind);
-            gl.uniform4f(uTB[i], p.vx, p.vy, p.virtue, p.dwell);
-            gl.uniform4f(uTC[i], p.hue[0], p.hue[1], p.hue[2], p.hueAmt);
-          } else {
-            gl.uniform4f(uTA[i], -10, -10, 0.001, 0);
-            gl.uniform4f(uTB[i], 0, 0, 0, 0);
-            gl.uniform4f(uTC[i], 0, 0, 0, 0);
-          }
-        }
-
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-        requestAnimationFrame(loop);
-      }
-
-      requestAnimationFrame(loop);
-    </script>
   </body>
 </html>
