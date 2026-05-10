@@ -52,7 +52,7 @@ Shared visual language across all works:
 |---|---|
 | Background | `#f2efe9` (paper cream) — NOT pure white |
 | Ink | very dark warm values like `rgba(15,10,8,...)` — NOT pure black |
-| Typography | `'Times Skeleton', 'Songti SC', 'STSong', 'SimSun', serif` — Times Skeleton is a custom OTF (Bailey's own) self-hosted at repo root, loaded via `@font-face`. EN/Latin → Times Skeleton; CN/CJK → Songti chain. Single weight/style only — italic & bold are browser-synthesized. |
+| Typography | `'Bricolage Grotesque', 'Songti SC', 'STSong', 'SimSun', serif` — Bricolage loaded from Google Fonts CDN (variable axes opsz/wght). EN/Latin → Bricolage; CN/CJK → Songti chain. No italic axis on Google Fonts → `font-style: italic` is browser-synthesized oblique. |
 | UI text size | 9–11px |
 | UI letter-spacing | 0.15–0.25em |
 | UI opacity | 0.3–0.5 (deliberately faded) |
